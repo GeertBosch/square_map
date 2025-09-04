@@ -7,6 +7,7 @@
 
 #include <benchmark/benchmark.h>
 
+#include <algorithm>
 #include <boost/container/flat_map.hpp>
 #include <cstdint>
 #include <map>
@@ -29,32 +30,36 @@ using std_map_int = std::map<uint32_t, bool>;
 using flat_map_int = flat_map<uint32_t, bool>;
 using square_map_int = geert::square_map<uint32_t, bool>;
 
-// Sequential generator (1,2,3,...)
-struct SequentialGenerator {
-    uint32_t generateInteger() { return counter++; }
-    uint32_t counter = 0;
-};
+// Key order type for benchmarks
+enum class KeyOrder { Sequential, Random };
 
-// Random number generator
-struct RandomGenerator {
-    uint32_t generateInteger() { return dist(rng); }
+// Helper function to generate keys - sequential numbers, optionally shuffled
+template <typename KeyType>
+std::vector<KeyType> generateKeys(size_t N, KeyOrder order) {
+    std::vector<KeyType> keys;
+    keys.reserve(N);
 
-    std::mt19937 rng;
-    std::uniform_int_distribution<uint32_t> dist;
-};
+    // Generate sequential numbers starting from 1
+    for (size_t i = 0; i < N; i++) {
+        keys.push_back(static_cast<KeyType>(i + 1));
+    }
+
+    // Shuffle if random order is requested
+    if (order == KeyOrder::Random) {
+        static std::mt19937 rng;
+        std::shuffle(keys.begin(), keys.end(), rng);
+    }
+
+    return keys;
+}
 
 // Insert benchmark
-template <typename Map, typename Generator>
+template <typename Map, KeyOrder Order>
 static void BM_Insert(benchmark::State& state) {
     const size_t N = state.range(0);
 
     // Generate all keys upfront to avoid generator overhead in timing
-    Generator gen;
-    std::vector<typename Map::key_type> keys;
-    keys.reserve(N);
-    for (size_t i = 0; i < N; i++) {
-        keys.push_back(gen.generateInteger());
-    }
+    auto keys = generateKeys<typename Map::key_type>(N, Order);
 
     for (auto _ : state) {
         Map m;
@@ -70,24 +75,20 @@ static void BM_Insert(benchmark::State& state) {
         state.iterations() * N, benchmark::Counter::kIsRate | benchmark::Counter::kInvert);
 }
 
-template <typename Map, typename Generator>
+template <typename Map, KeyOrder Order>
 static void BM_Lookup(benchmark::State& state) {
     const size_t N = state.range(0);
 
     // Setup map with N elements
-    Generator gen;
+    auto keys = generateKeys<typename Map::key_type>(N, Order);
     Map m;
-    std::vector<typename Map::key_type> keys;
-    keys.reserve(N);
-    for (size_t i = 0; i < N; i++) {
-        auto key = gen.generateInteger();
+    for (const auto& key : keys) {
         m[key] = true;
-        keys.push_back(key);
-    } 
+    }
 
     size_t idx = 0;
     for (auto _ : state) {
-        benchmark::DoNotOptimize(m.find(keys[idx]));
+        benchmark::DoNotOptimize(m.at(keys[idx]));
         if (++idx >= N) idx = 0;
     }
 
@@ -97,15 +98,15 @@ static void BM_Lookup(benchmark::State& state) {
 }
 
 // Range iteration benchmark
-template <typename Map, typename Generator>
+template <typename Map, KeyOrder Order>
 static void BM_RangeIteration(benchmark::State& state) {
     const size_t N = state.range(0);
 
     // Setup map with N elements
-    Generator gen;
+    auto keys = generateKeys<typename Map::key_type>(N, Order);
     Map m;
-    for (size_t i = 0; i < N; i++) {
-        m[gen.generateInteger()] = true;
+    for (const auto& key : keys) {
+        m[key] = true;
     }
 
     for (auto _ : state) {
@@ -122,11 +123,10 @@ static void BM_RangeIteration(benchmark::State& state) {
         state.iterations() * N, benchmark::Counter::kIsRate | benchmark::Counter::kInvert);
 }
 
-// Helper to determine the appropriate max size for Insert benchmarks with RandomGenerator
-template <typename Map, typename Generator>
+// Helper to determine the appropriate max size for Insert benchmarks with Random order
+template <typename Map, KeyOrder Order>
 constexpr uint32_t GetInsertMaxSize() {
-    if constexpr (std::is_same_v<Generator, RandomGenerator> &&
-                  (std::is_same_v<Map, flat_map_int>)) {
+    if constexpr (Order == KeyOrder::Random && (std::is_same_v<Map, flat_map_int>)) {
         return kMaxSlowContainerSize;
     } else {
         return kMaxContainerSize;
@@ -134,29 +134,29 @@ constexpr uint32_t GetInsertMaxSize() {
 }
 
 // Helper macro to determine the correct max size for insert benchmarks
-#define GET_INSERT_MAX_SIZE(MapType, GeneratorType)                                           \
-    (std::is_same_v<MapType, flat_map_int> && std::is_same_v<GeneratorType, RandomGenerator>) \
-        ? kMaxSlowContainerSize                                                               \
+#define GET_INSERT_MAX_SIZE(MapType, OrderType)                              \
+    (std::is_same_v<MapType, flat_map_int> && OrderType == KeyOrder::Random) \
+        ? kMaxSlowContainerSize                                              \
         : kMaxContainerSize
 
-// Macro to register all benchmark types for a given Map and Generator combination
-#define REGISTER_BENCHMARK_SET(MapType, GeneratorType)                           \
-    BENCHMARK_TEMPLATE(BM_Insert, MapType, GeneratorType)                        \
-        ->Range(kMinContainerSize, GET_INSERT_MAX_SIZE(MapType, GeneratorType)); \
-    BENCHMARK_TEMPLATE(BM_Lookup, MapType, GeneratorType)                        \
-        ->Range(kMinContainerSize, GET_INSERT_MAX_SIZE(MapType, GeneratorType)); \
-    BENCHMARK_TEMPLATE(BM_RangeIteration, MapType, GeneratorType)                \
-        ->Range(kMinContainerSize, GET_INSERT_MAX_SIZE(MapType, GeneratorType));
+// Macro to register all benchmark types for a given Map and KeyOrder combination
+#define REGISTER_BENCHMARK_SET(MapType, OrderType)                           \
+    BENCHMARK_TEMPLATE(BM_Insert, MapType, OrderType)                        \
+        ->Range(kMinContainerSize, GET_INSERT_MAX_SIZE(MapType, OrderType)); \
+    BENCHMARK_TEMPLATE(BM_Lookup, MapType, OrderType)                        \
+        ->Range(kMinContainerSize, GET_INSERT_MAX_SIZE(MapType, OrderType)); \
+    BENCHMARK_TEMPLATE(BM_RangeIteration, MapType, OrderType)                \
+        ->Range(kMinContainerSize, GET_INSERT_MAX_SIZE(MapType, OrderType));
 
 // Register all benchmarks with proper type names and DRY principle
 void RegisterAllBenchmarks() {
     // Integer map benchmarks
-    REGISTER_BENCHMARK_SET(std_map_int, SequentialGenerator);
-    REGISTER_BENCHMARK_SET(std_map_int, RandomGenerator);
-    REGISTER_BENCHMARK_SET(flat_map_int, SequentialGenerator);
-    REGISTER_BENCHMARK_SET(flat_map_int, RandomGenerator);
-    REGISTER_BENCHMARK_SET(square_map_int, SequentialGenerator);
-    REGISTER_BENCHMARK_SET(square_map_int, RandomGenerator);
+    REGISTER_BENCHMARK_SET(std_map_int, KeyOrder::Sequential);
+    REGISTER_BENCHMARK_SET(std_map_int, KeyOrder::Random);
+    REGISTER_BENCHMARK_SET(flat_map_int, KeyOrder::Sequential);
+    REGISTER_BENCHMARK_SET(flat_map_int, KeyOrder::Random);
+    REGISTER_BENCHMARK_SET(square_map_int, KeyOrder::Sequential);
+    REGISTER_BENCHMARK_SET(square_map_int, KeyOrder::Random);
 }
 
 struct BenchmarkRegistrar {

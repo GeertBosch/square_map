@@ -14,7 +14,7 @@ import re
 
 def parse_benchmark_name(name):
     """Parse benchmark name to extract components."""
-    # Pattern: BM_<operation><map_type, generator_type>/<size>
+    # Pattern: BM_<operation><map_type, KeyOrder::<order>>/size>
     pattern = r'BM_(\w+)<(.+?)>/(\d+)'
     match = re.match(pattern, name)
     if match:
@@ -22,7 +22,16 @@ def parse_benchmark_name(name):
         types = match.group(2).split(', ')
         size = int(match.group(3))
         map_type = types[0] if len(types) > 0 else 'unknown'
-        generator = types[1] if len(types) > 1 else 'unknown'
+        key_order = types[1] if len(types) > 1 else 'unknown'
+        
+        # Convert KeyOrder:: format to generator names for compatibility
+        if key_order == 'KeyOrder::Sequential':
+            generator = 'Sequential'
+        elif key_order == 'KeyOrder::Random':
+            generator = 'Random'
+        else:
+            generator = key_order
+            
         return operation, map_type, generator, size
     return None, None, None, None
 
@@ -140,8 +149,8 @@ def create_comparison_plot(df, output_dir='plots'):
     plt.figure(figsize=(16, 12))
     
     operations = ['Insert', 'Lookup', 'RangeIteration']
-    generators = ['SequentialGenerator', 'RandomGenerator']
-    
+    generators = ['Sequential', 'Random']
+
     for i, operation in enumerate(operations):
         for j, generator in enumerate(generators):
             plt.subplot(len(operations), len(generators), i * len(generators) + j + 1)
