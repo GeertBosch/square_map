@@ -7,7 +7,7 @@
 
 namespace geert {
 
-constexpr std::size_t kMaxL1Size = 128;
+constexpr std::size_t kMaxRightSize = 128;
 
 template <class Key,
           class T,
@@ -29,12 +29,11 @@ public:
     using pointer = typename allocator_type::pointer;
     using const_pointer = typename allocator_type::const_pointer;
 
-    struct value_key_compare_struct {
+    struct value_key_compare {
         constexpr bool operator()(const value_type& left, const key_type& right) const {
             return Compare()(left.first, right);
         }
     };
-    using value_key_compare = value_key_compare_struct;
 
     class const_iterator {
     public:
@@ -53,10 +52,10 @@ public:
                     if (_alt < _it)
                         return *this;  // _alt has no more elements, so no need to swap.
 
-                    // *_alt must be in L1. As L1 has the last element, _alt must not yet be
-                    // positioned, which happens when a find hits in L1. In this case, we can't do a
-                    // binary search, but L1 has few elements, so a linear search is OK for these
-                    // cases.
+                    // *_alt must be in the right range. As the right range has the last element,
+                    // _alt must not yet be positioned, which happens when a find hits in the right
+                    // range. In this case, we can't do a binary search, but the right range has few
+                    // elements, so a linear search is OK for these cases.
                     while (Compare()((++_alt)->first, lastKey))
                         ;
                 }
@@ -89,11 +88,11 @@ public:
         }
 
     protected:
-        // _it points to the current element, which either may be in either the L1 or the L2 range.
-        // _alt  points to the next (larger) element in the alternate range, or to a smaller one if
-        // that range is exhausted.
-        // If _it points into L2, it is permissible for _alt to be pointed at the first element of
-        // L1. Cursor advancement will reposition _alt using a linear scan.
+        // _it points to the current element, which either may be in either the range. _alt  points
+        // to the next (larger) element in the alternate range, or to a smaller one if that range is
+        // exhausted. If _it points into the left range it is permissible for _alt to be pointed at
+        // the first element of the right. Cursor advancement will reposition _alt using a linear
+        // scan.
         container_iterator _it, _alt;
 
         friend square_map;
@@ -145,7 +144,7 @@ public:
     const T& at(const Key& key) const {
         if (auto it = find(key); it != end())
             return it->second;
-        throw std::out_of_range("level_map<>: index out of range");
+        throw std::out_of_range("square_map<>: index out of range");
     }
 
     T& operator[](const Key& key) {
@@ -164,7 +163,7 @@ public:
         if (empty())
             return cend();
         auto it = _vthis()->_container.begin();
-        auto alt = it + _L2Size;
+        auto alt = it + _split;
         return Compare()(alt->first, it->first) ? iterator::make(alt, it) : iterator::make(it, alt);
     }
 
@@ -185,9 +184,7 @@ public:
         return !size();
     }
 
-    size_type size() const noexcept {
-        return _container.size() - _L2Erased;
-    }
+    size_type size() const noexcept { return _container.size() - _erased; }
 
     size_type max_size() const noexcept {
         return _container.max_size();
@@ -212,43 +209,46 @@ public:
     }
 
     constexpr iterator erase(const_iterator pos) {
-        // If pos points into L1 or at the last item of L2, directly remove the element.
+        // If pos points into the right range or at the last item of the left range, directly remove
+        // the element.
         const size_type idx = std::distance(_container.begin(), pos._it);
-        if (pos._it >= pos._alt || idx == --_L2Size)
+        if (pos._it >= pos._alt || idx == --_split)
             return iterator::make(_container.erase(pos._it), pos._alt);
-        // For elements properly in L2, mark it as deleted, by replacement with its next larger
-        // neighbor: copy the key, move the value and increment _L2Erased. Compact when needed.
+
+        // For elements properly in the left range, mark it as deleted, by replacement with its next
+        // larger neighbor: copy the key, move the value and increment _erased. Compact as needed.
         auto& neighbor = *(pos._it + 1);
-        _L2Erased++;
+        _erased++;
         *pos._it = {neighbor.first, std::move(neighbor.second)};
-        if (_L2Erased * _L2Erased <= _container.size())
+        if (_erased * _erased <= _container.size())
             return iterator::make(_container.begin() + idx, pos._alt);
 
         // Maintain complexity bounds for operations after erasing sqrt(N) items.
         auto key = neighbor.first;  // Iterators will be invalidated.
-        auto L2End = _container.begin() + _L2Size;
-        L2End = std::unique(_container.begin(), L2End);
-        _container.erase(L2End, _container.begin() + _L2Size);
-        _L2Size = _L2Erased = 0;
+        auto it = _container.begin() + _split;
+        it = std::unique(_container.begin(), it);
+        _container.erase(it, _container.begin() + _split);
+        _split = _erased = 0;
         return find(key);
     }
 
     std::pair<iterator, bool> insert(value_type&& value) {
-        // Bound complexity by merging when the L1 size is double the square root of the L2 size.
-        if (auto L1Size = _container.size() - _L2Size;
-            L1Size >= kMaxL1Size && L1Size * L1Size >= 4 * _L2Size) {
-            merge_with_binary_search(_container.begin(), _container.begin() + _L2Size,
-                                     _container.end());
-            _L2Size = _container.size() - 1;  // keep the largest key in L1, iterators invalidated.
+        // Bound complexity by merging when the size of the right range is double the square root of
+        // the size of the left range.
+        if (auto rightSize = _container.size() - _split;
+            rightSize >= kMaxRightSize && rightSize * rightSize >= 4 * _split) {
+            merge_with_binary_search(_container.begin(), _container.begin() + _split, _container.end());
+            // keep the largest key in the right range, iterators invalidated.
+            _split = _container.size() - 1;
         }
-        auto L1Begin = _container.begin() + _L2Size, L1End = _container.end();
-        auto L1It = std::lower_bound(L1Begin, L1End, value.first, value_key_compare());
-        auto L2It = std::lower_bound(_container.begin(), L1Begin, value.first, value_key_compare());
-        if (L2It != L1Begin && !value_key_compare()(value, L2It->first))
-            return {iterator::make(L2It, L1It), false};  // found an exact match in L2
-        if (L1It != L1End && !value_key_compare()(value, L1It->first))
-            return {iterator::make(L1It, L2It), false};  // found an exact match in L1
-        return {iterator::make(_container.insert(L1It, std::move(value)), L2It), true};
+        auto split = _container.begin() + _split, end = _container.end();
+        auto rightIt = std::lower_bound(split, end, value.first, value_key_compare());
+        auto leftIt = std::lower_bound(_container.begin(), split, value.first, value_key_compare());
+        if (leftIt != split && !value_key_compare()(value, leftIt->first))
+            return {iterator::make(leftIt, rightIt), false};  // found an exact match in the left
+        if (rightIt != end && !value_key_compare()(value, rightIt->first))
+            return {iterator::make(rightIt, leftIt), false};  // found an exact match in the right
+        return {iterator::make(_container.insert(rightIt, std::move(value)), leftIt), true};
     }
 
     void swap(square_map& other) noexcept {
@@ -264,11 +264,10 @@ public:
     }
     const_iterator find(const Key& key) const {
         auto& container = _vthis()->_container;
-        auto L1Begin = container.begin() + _L2Size;
-        auto it2 = std::lower_bound(container.begin(), L1Begin, key, value_key_compare());
-        if (it2 < L1Begin && !Compare()(key, it2->first))
-            return iterator::make(it2, L1Begin);
-        auto it1 = std::lower_bound(L1Begin, container.end(), key, value_key_compare());
+        auto split = container.begin() + _split;
+        auto it2 = std::lower_bound(container.begin(), split, key, value_key_compare());
+        if (it2 < split && !Compare()(key, it2->first)) return iterator::make(it2, split);
+        auto it1 = std::lower_bound(split, container.end(), key, value_key_compare());
         if (it1 < container.end() && !Compare()(key, it1->first))
             return iterator::make(it1, it2);
         return end();
@@ -282,7 +281,7 @@ private:
         return const_cast<square_map*>(this);
     }
     container_type _container;
-    size_type _L2Size = 0;
-    size_type _L2Erased = 0;
+    size_type _split = 0;
+    size_type _erased = 0;
 };
 }  // namespace geert
