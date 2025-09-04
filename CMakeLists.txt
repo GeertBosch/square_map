@@ -36,6 +36,17 @@ target_include_directories(square_map_test PRIVATE
 # Add the test
 add_test(NAME square_map_test COMMAND square_map_test)
 
+# Add merge_with_binary_search test
+add_executable(merge_with_binary_search_test merge_with_binary_search_test.cpp)
+target_link_libraries(merge_with_binary_search_test PRIVATE GTest::GTest GTest::Main)
+target_include_directories(merge_with_binary_search_test PRIVATE 
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${GTEST_INCLUDE_DIRS}
+)
+
+# Add the test
+add_test(NAME merge_with_binary_search_test COMMAND merge_with_binary_search_test)
+
 # Add benchmark executable
 add_executable(square_map_bm square_map_bm.cpp)
 target_link_libraries(square_map_bm PRIVATE 

@@ -3,6 +3,8 @@
 #include <iterator>
 #include <vector>
 
+#include "merge_with_binary_search.h"
+
 namespace geert {
 
 constexpr std::size_t kMaxL1Size = 128;
@@ -235,7 +237,8 @@ public:
         // Bound complexity by merging when the L1 size is double the square root of the L2 size.
         if (auto L1Size = _container.size() - _L2Size;
             L1Size >= kMaxL1Size && L1Size * L1Size >= 4 * _L2Size) {
-            std::inplace_merge(_container.begin(), _container.begin() + _L2Size, _container.end());
+            merge_with_binary_search(_container.begin(), _container.begin() + _L2Size,
+                                     _container.end());
             _L2Size = _container.size() - 1;  // keep the largest key in L1, iterators invalidated.
         }
         auto L1Begin = _container.begin() + _L2Size, L1End = _container.end();
