@@ -18,10 +18,8 @@
 namespace {
 
 constexpr uint32_t kMinContainerSize = 11;
-constexpr uint32_t kMaxContainerSize = 1'100'000;
+constexpr uint32_t kMaxContainerSize = 110'000;
 constexpr uint32_t kMaxSlowContainerSize = kMaxContainerSize / 10;  // Smaller size for O(n) ops
-
-constexpr size_t kPreallocSize = 16;
 
 template <class Key, class T, class Compare = std::less<Key>>
 using flat_map = boost::container::flat_map<Key, T, Compare>;

@@ -47,17 +47,17 @@ def load_benchmark_data(json_file):
         
         if operation and map_type and generator and size:
             # Extract time_per_item from counters if available
-            time_per_item_ns = None
+            time_per_item_s = None
             if 'time_per_item' in benchmark:
-                time_per_item_ns = benchmark['time_per_item']
+                time_per_item_s = benchmark['time_per_item']
             
             results.append({
                 'operation': operation,
                 'map_type': map_type,
                 'generator': generator,
                 'size': size,
-                'time_per_item_ns': time_per_item_ns,
-                'time_per_item_us': time_per_item_ns / 1000.0 if time_per_item_ns else None,
+                'time_per_item_s': time_per_item_s,
+                'time_per_item_ns': time_per_item_s * 1000000000.0 if time_per_item_s else None,
                 'cpu_time': benchmark['cpu_time'],
                 'items_per_second': benchmark.get('items_per_second', 0)
             })
@@ -68,8 +68,8 @@ def create_plots(df, output_dir='plots'):
     """Create log-log plots for benchmark results."""
     Path(output_dir).mkdir(exist_ok=True)
     
-    # Filter out rows where time_per_item_us is None
-    df = df[df['time_per_item_us'].notna()]
+    # Filter out rows where time_per_item_ns is None
+    df = df[df['time_per_item_ns'].notna()]
     
     if df.empty:
         print("No time_per_item data found in benchmark results!")
@@ -99,12 +99,12 @@ def create_plots(df, output_dir='plots'):
                 map_data = gen_data[gen_data['map_type'] == map_type].sort_values('size')
                 
                 if len(map_data) > 0:
-                    plt.loglog(map_data['size'], map_data['time_per_item_us'], 
+                    plt.loglog(map_data['size'], map_data['time_per_item_ns'], 
                               'o-', label=map_type, color=colors[i % len(colors)],
                               linewidth=2, markersize=6)
             
             plt.xlabel('Container Size', fontsize=12)
-            plt.ylabel('Time per Item (microseconds)', fontsize=12)
+            plt.ylabel('Time per Item (nanoseconds)', fontsize=12)
             plt.title(f'{operation} Performance - {generator}', fontsize=14)
             plt.legend(fontsize=10)
             plt.grid(True, alpha=0.3)
@@ -112,7 +112,7 @@ def create_plots(df, output_dir='plots'):
             # Add some reference lines for common complexities
             if len(gen_data) > 0:
                 sizes = np.array(sorted(gen_data['size'].unique()))
-                min_time = gen_data['time_per_item_us'].min()
+                min_time = gen_data['time_per_item_ns'].min()
                 
                 # O(1) reference line
                 plt.loglog(sizes, [min_time] * len(sizes), '--', 
@@ -139,8 +139,8 @@ def create_plots(df, output_dir='plots'):
 
 def create_comparison_plot(df, output_dir='plots'):
     """Create a comprehensive comparison plot."""
-    # Filter out rows where time_per_item_us is None
-    df = df[df['time_per_item_us'].notna()]
+    # Filter out rows where time_per_item_ns is None
+    df = df[df['time_per_item_ns'].notna()]
     
     if df.empty:
         print("No time_per_item data found for comparison plot!")
@@ -150,7 +150,7 @@ def create_comparison_plot(df, output_dir='plots'):
     
     operations = ['Insert', 'Lookup', 'RangeIteration']
     generators = ['Sequential', 'Random']
-
+     
     for i, operation in enumerate(operations):
         for j, generator in enumerate(generators):
             plt.subplot(len(operations), len(generators), i * len(generators) + j + 1)
@@ -164,12 +164,12 @@ def create_comparison_plot(df, output_dir='plots'):
                 for k, map_type in enumerate(map_types):
                     map_data = op_data[op_data['map_type'] == map_type].sort_values('size')
                     if len(map_data) > 0:
-                        plt.loglog(map_data['size'], map_data['time_per_item_us'], 
+                        plt.loglog(map_data['size'], map_data['time_per_item_ns'], 
                                   'o-', label=map_type, color=colors[k % len(colors)],
                                   linewidth=1.5, markersize=4)
                 
                 plt.xlabel('Size' if i == len(operations) - 1 else '')
-                plt.ylabel('Time per Item (μs)' if j == 0 else '')
+                plt.ylabel('Time per Item (ns)' if j == 0 else '')
                 plt.title(f'{operation} - {generator}', fontsize=10)
                 if i == 0 and j == 0:
                     plt.legend(fontsize=8, bbox_to_anchor=(1.05, 1), loc='upper left')
