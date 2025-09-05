@@ -142,13 +142,57 @@ public:
         return const_cast<T&>(_cthis()->at(key));
     }
     const T& at(const Key& key) const {
-        if (auto it = find(key); it != end())
-            return it->second;
+        auto split = _container.begin() + _split, end = _container.end();
+        auto leftIt = std::lower_bound(_container.begin(), split, key, value_key_compare());
+
+        bool inLeft = leftIt != split && !Compare()(key, leftIt->first);
+        if (inLeft && !_erased) return leftIt->second;  // Fast path if there are no erased items.
+
+        // If the item is both in the left and the right range, it has been erased.
+        auto rightIt = std::lower_bound(split, end, key, value_key_compare());
+        bool inRight = rightIt != end && !Compare()(key, rightIt->first);
+
+        if (inLeft && !inRight) return leftIt->second;  // Most common if there are erased items.
+        if (inRight && !inLeft) return rightIt->second;
+
+        // Either the key is unknown or it has been erased.
+        if (inLeft && inRight) throw std::out_of_range("square_map<>: key has been erased");
         throw std::out_of_range("square_map<>: index out of range");
     }
 
     T& operator[](const Key& key) {
-        return insert({key, {}}).first->second;
+        // Bound complexity by merging when the size of the right range is double the square
+        // root of the size of the left range. 
+        if (auto rightSize = _container.size() - _split;
+            rightSize >= kMaxRightSize && rightSize * rightSize >= 4 * _split) {
+            merge_with_binary_search(_container.begin(), _container.begin() + _split,
+                                     _container.end());
+            // keep the largest key in the right range, iterators invalidated.
+            _split = _container.size() - 1;
+        }
+
+        auto split = _container.begin() + _split, end = _container.end();
+        auto leftIt = std::lower_bound(_container.begin(), split, key, value_key_compare());
+
+        bool inLeft = leftIt != split && !Compare()(key, leftIt->first);
+        if (inLeft && !_erased) return leftIt->second;  // Fast path if there are no erased items.
+
+        // If the item is both in the left and the right range, it has been erased.
+        auto rightIt = std::lower_bound(split, end, key, value_key_compare());
+        bool inRight = rightIt != end && !Compare()(key, rightIt->first);
+
+        if (inLeft && inRight) {
+            // Reinsert erased item: remove the right one and return the left one.
+            --_erased;
+            _container.erase(rightIt);
+            return leftIt->second;
+        }
+
+        // If just found in the right side, return that one.
+        if (inRight) return rightIt->second;
+
+        // Not found, insert a new item in the right range.
+        return _container.insert(rightIt, {key, T()})->second;
     }
 
     // Iterators
@@ -265,11 +309,11 @@ public:
     const_iterator find(const Key& key) const {
         auto& container = _vthis()->_container;
         auto split = container.begin() + _split;
-        auto it2 = std::lower_bound(container.begin(), split, key, value_key_compare());
-        if (it2 < split && !Compare()(key, it2->first)) return iterator::make(it2, split);
-        auto it1 = std::lower_bound(split, container.end(), key, value_key_compare());
-        if (it1 < container.end() && !Compare()(key, it1->first))
-            return iterator::make(it1, it2);
+        auto leftIt = std::lower_bound(container.begin(), split, key, value_key_compare());
+        if (leftIt < split && !Compare()(key, leftIt->first)) return iterator::make(leftIt, split);
+        auto rightIt = std::lower_bound(split, container.end(), key, value_key_compare());
+        if (rightIt < container.end() && !Compare()(key, rightIt->first))
+            return iterator::make(rightIt, leftIt);
         return end();
     }
 
