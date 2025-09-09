@@ -71,14 +71,12 @@ def create_quickplot(square_map_df, reference_df=None, output_file='plots/quickp
         'square_map_int': '#1f77b4',
         'std_map_int': '#2ca02c', 
         'flat_map_int': '#ff7f0e',
-        'unordered_map_int': '#d62728',
-        'vector_int': '#9467bd'
     }
     
     operation_styles = {
         'Insert': '-',
-        'Lookup': '--',
-        'RangeIteration': ':'
+        'Lookup': ':',
+        'RangeIteration': '--'
     }
     
     operation_markers = {

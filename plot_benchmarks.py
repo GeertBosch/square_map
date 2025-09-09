@@ -90,8 +90,8 @@ def create_plots(df, output_dir='plots'):
     
     operation_styles = {
         'Insert': '-',
-        'Lookup': '--',
-        'RangeIteration': ':'
+        'Lookup': ':',
+        'RangeIteration': '--'
     }
 
     # Create combined plots for each generator type
@@ -183,8 +183,8 @@ def create_comparison_plot(df, output_dir='plots'):
     
     operation_styles = {
         'Insert': '-',
-        'Lookup': '--',
-        'RangeIteration': ':'
+        'Lookup': ':',
+        'RangeIteration': '--'
     }
 
     for i, operation in enumerate(operations):
