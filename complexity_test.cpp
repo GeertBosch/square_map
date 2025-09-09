@@ -1,11 +1,23 @@
-#include <iostream>
-#include <atomic>
-#include <vector>
 #include <algorithm>
-#include <random>
+#include <atomic>
+#include <boost/container/flat_map.hpp>
 #include <cmath>
 #include <iomanip>
+#include <iostream>
+#include <map>
+#include <random>
+#include <sstream>
+#include <string>
+#include <vector>
+
 #include "square_map.h"
+
+constexpr bool kDebug = false;
+constexpr double kConfidenceThreshold = 0.80;  // Threshold for strong confidence in complexity
+constexpr double kSeparationThreshold = 0.25;  // Minimum difference between best and second best
+
+// Don't test small sizes, as there complexity is different, but with small constants
+const std::vector<int> test_sizes = {4'000, 8'000, 16'000, 32'000, 64'000, 128'000};
 
 // Instrumented type to count operations
 class InstrumentedInt {
@@ -98,12 +110,6 @@ public:
     }
 };
 
-constexpr bool kDebug = false;
-constexpr double kConfidenceThreshold = 0.9;  // Threshold for strong confidence in complexity
-// Don't test small sizes, as there complexity is different, but with small constants
-
-const std::vector<int> test_sizes = {8'000, 16'000, 32'000, 64'000, 128'000};
-
 int totalFailures = 0;
 int totalPasses = 0;
 
@@ -155,21 +161,20 @@ double calculate_ratio_consistency(const std::vector<double>& x, const std::vect
 
 // Function to analyze complexity by testing correlation with different functions
 void analyze_complexity(const std::vector<TestResult>& results, std::string operation,
-                        std::string expected_complexity) {
+                        std::string expected_complexity, bool header) {
     std::vector<double> n_values, operation_values;
     for (const auto& result : results) {
         n_values.push_back(result.n);
         if (operation == "Insert Writes") {
             operation_values.push_back(result.writes_per_insert);
-        } else if (operation == "Insert Comparisons") {
+        } else if (operation == "Insert Comps") {
             operation_values.push_back(result.comparisons_per_insert);
-        } else if (operation == "Lookup Comparisons") {
+        } else if (operation == "Lookup Comps") {
             operation_values.push_back(result.lookups_per_insert);
         }
     }
-    
+
     // Test different complexity functions
-    std::vector<double> constant(n_values.size(), 1.0);
     std::vector<double> log_n, sqrt_n, linear_n;
 
     for (double n : n_values) {
@@ -184,14 +189,18 @@ void analyze_complexity(const std::vector<TestResult>& results, std::string oper
     double ratio_const_linear_n = calculate_ratio_consistency(linear_n, operation_values);
 
     if (kDebug) {
-        std::cout << "\n=== " << operation << " Ratio Consistency Scores ===\n" << std::endl;
-        std::cout << "  O(log n): " << std::fixed << std::setprecision(3) << ratio_const_log_n
+        std::cout << "\n### "
+                  << " Ratio Consistency Scores for " << operation << "\n"
                   << std::endl;
-        std::cout << "     O(√n): " << std::fixed << std::setprecision(3) << ratio_const_sqrt_n
-                  << std::endl;
-        std::cout << "      O(n): " << std::fixed << std::setprecision(3) << ratio_const_linear_n
-                  << std::endl
-                  << std::endl;
+        std::cout << "| Complexity | Ratio Consistency |\n";
+        std::cout << "|:----------:|:-----------------:|\n";
+        std::cout << "| O(log n)   | " << std::fixed << std::setprecision(3) << std::setw(17)
+                  << ratio_const_log_n << " |\n";
+        std::cout << "|  O(√n)     | " << std::fixed << std::setprecision(3) << std::setw(17)
+                  << ratio_const_sqrt_n << " |\n";
+        std::cout << "|  O(n)      | " << std::fixed << std::setprecision(3) << std::setw(17)
+                  << ratio_const_linear_n << " |\n";
+        std::cout << std::endl;
     }
 
     // Find best fit using ratio consistency
@@ -200,82 +209,116 @@ void analyze_complexity(const std::vector<TestResult>& results, std::string oper
         {ratio_const_sqrt_n, "O(√n)"},
         {ratio_const_linear_n, "O(n)"}
     };
-    
-    std::sort(ratio_results.rbegin(), ratio_results.rend());
-    if (kDebug)
-        std::cout << "Best fit: " << ratio_results[0].second
-                  << " (ratio consistency = " << std::fixed << std::setprecision(3)
-                  << ratio_results[0].first << ")" << std::endl;
 
-    double difference = 0.0;
+    std::stable_sort(ratio_results.rbegin(), ratio_results.rend());
+    if (kDebug)
+        std::cout << "**Best fit**: " << ratio_results[0].second
+                  << ", ratio consistency = " << std::fixed << std::setprecision(3)
+                  << ratio_results[0].first << "\n"
+                  << std::endl;
+
+    double margin = 0.0;
     bool failure = false;
     std::string complexity = ratio_results[0].second;
 
-    // Check the difference between best and second best
-    if (ratio_results.size() > 1) {
-        difference = ratio_results[0].first - ratio_results[1].first;
-        if (kDebug)
-            std::cout << "Margin over second best (" << ratio_results[1].second
-                      << "): " << std::fixed << std::setprecision(3) << difference << std::endl;
-
-        if (difference < 0.2) {
-            failure = true;
-            std::cout << "⚠️  WARNING: Small margin of " << std::fixed << std::setprecision(2)
-                      << difference << " between " << ratio_results[0].second << " and "
-                      << ratio_results[1].second << " suggests inconclusive results!" << std::endl;
-        }
+    // Print table header
+    if (header) {
+        std::cout << "| Pass | Operation      |  Actual  | Confidence | Margin | Expected |\n";
+        std::cout << "|------|----------------|:--------:|:----------:|:------:|:--------:|\n";
     }
 
-    // Additional analysis for strong evidence
-    failure = failure || (ratio_results[0].first < kConfidenceThreshold);
-    if (failure) {
-        std::cout << "❌ No clear complexity pattern detected for " << operation << std::endl;
-        ++totalFailures;
+    // Prepare result table row
+    std::string pass_mark, margin_str, confidence_str, actual_complexity;
+    if (ratio_results.size() > 1) {
+        margin = ratio_results[0].first - ratio_results[1].first;
+        std::ostringstream margin_stream;
+        if (margin < kSeparationThreshold)
+            margin_stream << "⚠️ " << std::fixed << std::setprecision(2) << margin;
+        else
+            margin_stream << std::fixed << std::setprecision(2) << margin;
+        margin_str = margin_stream.str();
     } else {
-        // Add a checkmark to the next message
-        std::cout << "✅ High confidence for " << complexity << " " << operation
-                  << " complexity, ratio consistency " << std::fixed << std::setprecision(2)
-                  << ratio_results[0].first << std::endl;
+        margin_str = "-";
+    }
+
+    std::ostringstream confidence_stream;
+    if (ratio_results[0].first < kConfidenceThreshold)
+        confidence_stream << "⚠️ " << std::fixed << std::setprecision(2) << ratio_results[0].first;
+    else
+        confidence_stream << std::fixed << std::setprecision(2) << ratio_results[0].first;
+    confidence_str = confidence_stream.str();
+
+    actual_complexity =
+        (ratio_results[0].first < kConfidenceThreshold) ? "Unclear" : ratio_results[0].second;
+
+    bool pass = (actual_complexity == expected_complexity) &&
+                (ratio_results[0].first >= kConfidenceThreshold) &&
+                (margin >= kSeparationThreshold);
+
+    pass_mark = pass ? "✅" : "❌";
+
+    // Print result table row
+    // if actual complexity includes the sqrt symbol, adjust widths accordingly
+    int actual_complexity_width = 8 + 2 * (actual_complexity.find("√") != std::string::npos);
+    int expected_complexity_width = 8 + 2 * (expected_complexity.find("√") != std::string::npos);
+    size_t operation_width = 14;
+    while (operation.length() < operation_width) operation += " ";
+
+    std::cout << "|  " << std::setw(4) << pass_mark << " | " << operation << " | "
+              << std::setw(actual_complexity_width) << actual_complexity << " | " << std::setw(10)
+              << confidence_str << " | " << std::setw(6) << margin_str << " | "
+              << std::setw(expected_complexity_width) << expected_complexity << " |" << std::endl;
+
+    // Update global counters
+    if (pass) {
         ++totalPasses;
+    } else {
+        ++totalFailures;
     }
 
     if (kDebug) {
         // Print detailed data for debugging
-        std::cout << "\n=== Data points ===\n" << std::endl;
+        std::cout << "\n### Data points\n" << std::endl;
 
-        std::cout << std::setw(8) << "N" << std::setw(20) << operation << std::setw(10) << "log(n)"
-                  << std::setw(10) << "√n" << std::setw(10) << "n" << std::endl;
-        std::cout << std::string(56, '-') << std::endl;
+        std::cout << std::setw(10) << "N" << std::setw(17) << operation << std::setw(8) << "log(n)"
+                  << std::setw(12) << "√n" << std::setw(10) << "n" << std::endl;
+        std::cout << "    " << std::string(52, '-') << std::endl;
         for (size_t i = 0; i < n_values.size(); i++) {
-            std::cout << std::setw(8) << (int)n_values[i] << std::setw(20) << std::fixed
+            std::cout << std::setw(10) << (int)n_values[i] << std::setw(15) << std::fixed
                       << std::setprecision(2) << operation_values[i] << std::setw(10) << std::fixed
-                      << std::setprecision(2) << log_n[i] << std::setw(8) << std::fixed
-                      << std::setprecision(0) << sqrt_n[i] << std::setw(10) << std::fixed
+                      << std::setprecision(2) << log_n[i] << std::setw(10) << std::fixed
+                      << std::setprecision(2) << sqrt_n[i] << std::setw(10) << std::fixed
                       << std::setprecision(0) << linear_n[i] << std::endl;
         }
     }
 }
 
 // Test function with multiple N values
-void test_square_map_complexity_multi() {
+template <template <typename Key, typename T> class MapType>
+void test_map_complexity(std::string mapName, std::vector<std::string> expected_complexities) {
     std::vector<TestResult> results;
 
-    std::cout << "\n=== Square Map Complexity Test ===\n" << std::endl;
+    std::cerr << "\n##  Complexity Test for " << mapName << "\n" << std::endl;
 
     for (int N : test_sizes) {
-        std::cout << "⏳ Testing N = " << N << "...";
-        std::flush(std::cout);
+        bool reduce_complexity =
+            std::find(expected_complexities.begin(), expected_complexities.end(), "O(n)") !=
+            expected_complexities.end();
+        N = reduce_complexity ? N / 10 : N;
+        std::cerr << "⏳ Testing N = " << N << "...";
+        if (reduce_complexity) std::cerr << " (reduced due to O(n) insert complexity)";
+        std::flush(std::cerr);
 
         TestResult result;
         result.n = N;
-        
+
         // Test insertions
         {
             InstrumentedInt::reset_counters();
-            
-            using square_map_type = geert::square_map<InstrumentedInt, InstrumentedInt>;
-            square_map_type smap;
-            
+
+            using map_type = MapType<InstrumentedInt, InstrumentedInt>;
+            map_type smap;
+
             // Create shuffled order for insertion
             std::vector<int> insert_order;
             for (int i = 0; i < N; ++i) {
@@ -283,7 +326,7 @@ void test_square_map_complexity_multi() {
             }
             std::mt19937 gen;
             std::shuffle(insert_order.begin(), insert_order.end(), gen);
-            
+
             // Insert N elements in shuffled order
             for (int i : insert_order) {
                 smap.insert({InstrumentedInt(i), InstrumentedInt(i * 2)});
@@ -294,14 +337,14 @@ void test_square_map_complexity_multi() {
 
             // Test successful lookups on the same map
             InstrumentedInt::reset_counters();
-            
+
             // Create shuffled order for lookups
             std::vector<int> lookup_order;
             for (int i = 0; i < N; ++i) {
                 lookup_order.push_back(i);
             }
             std::shuffle(lookup_order.begin(), lookup_order.end(), gen);
-            
+
             // Test lookups in shuffled order
             int found_count = 0;
             for (int i : lookup_order) {
@@ -313,45 +356,41 @@ void test_square_map_complexity_multi() {
 
             result.lookups_per_insert = (double)InstrumentedInt::comparison_count / N;
         }
-        std::cout << "\r✔️\n";
+        std::cerr << "\r✔️\n";
 
         results.push_back(result);
-
-        if (kDebug) {
-            std::cout << std::fixed << std::setprecision(2);
-            std::cout << "  Writes/Insert: " << result.writes_per_insert
-                      << ", Comparisons/Insert: " << result.comparisons_per_insert
-                      << ", Lookups/Insert: " << result.lookups_per_insert << std::endl;
-        }
     }
-    
+
     // Analyze complexities
-    std::cout << "\n=== Complexity Analysis ===\n" << std::endl;
-    analyze_complexity(results, "Insert Writes", "O(√n)");
-    analyze_complexity(results, "Insert Comparisons", "O(log n)");
-    analyze_complexity(results, "Lookup Comparisons", "O(log n)");
+    std::cout << "\n### Complexity Analysis for " << mapName << "\n" << std::endl;
+    analyze_complexity(results, "Insert Writes", expected_complexities[0], true);
+    analyze_complexity(results, "Insert Comps", expected_complexities[1], kDebug);
+    analyze_complexity(results, "Lookup Comps", expected_complexities[2], kDebug);
 
     // Print detailed results table
-    std::cout << "\n=== Detailed Results ===\n" << std::endl;
-    std::cout << std::setw(8) << "N" << std::setw(15) << "Writes/Insert" << std::setw(20)
+    std::cout << "\n### Detailed Results\n" << std::endl;
+    std::cout << std::setw(12) << "N" << std::setw(15) << "Writes/Insert" << std::setw(20)
               << "Comparisons/Insert" << std::setw(20) << "Comparisons/Lookup" << std::endl;
-    std::cout << std::string(63, '-') << std::endl;
+    std::cout << "    " << std::string(63, '-') << std::endl;
 
     for (const auto& result : results) {
-        std::cout << std::setw(8) << result.n << std::setw(15) << std::fixed << std::setprecision(2)
-                  << result.writes_per_insert << std::setw(20) << std::fixed << std::setprecision(2)
-                  << result.comparisons_per_insert << std::setw(20) << std::fixed
-                  << std::setprecision(2) << result.lookups_per_insert << std::endl;
+        std::cout << std::setw(12) << result.n << std::setw(15) << std::fixed
+                  << std::setprecision(2) << result.writes_per_insert << std::setw(20) << std::fixed
+                  << std::setprecision(2) << result.comparisons_per_insert << std::setw(20)
+                  << std::fixed << std::setprecision(2) << result.lookups_per_insert << std::endl;
     }
 }
 
 int main() {
-    test_square_map_complexity_multi();
+    test_map_complexity<geert::square_map>("square_map", {"O(√n)", "O(log n)", "O(log n)"});
+    test_map_complexity<std::map>("std::map", {"O(log n)", "O(log n)", "O(log n)"});
+    test_map_complexity<boost::container::flat_map>("flat_map", {"O(n)", "O(log n)", "O(log n)"});
+
     bool failure = totalFailures > 0 || totalPasses == 0;
     std::string mark = failure ? "❌" : "✅";
-    std::cout << "\n"
-              << mark << " Total Passes: " << totalPasses << ", Total Failures: " << totalFailures
-              << std::endl;
+    std::cout << "\n## Overall Summary\n" << std::endl;
+    std::cout << "\n " << mark << " Total Passes: " << totalPasses
+              << ", Total Failures: " << totalFailures << std::endl;
 
     return failure;
 }

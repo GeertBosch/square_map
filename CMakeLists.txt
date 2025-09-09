@@ -69,6 +69,10 @@ target_include_directories(square_map_bm PRIVATE
 
 # Add complexity test executable
 add_executable(complexity_test complexity_test.cpp)
+target_link_libraries(complexity_test PRIVATE 
+    Boost::container
+    Boost::headers
+)
 target_include_directories(complexity_test PRIVATE 
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
