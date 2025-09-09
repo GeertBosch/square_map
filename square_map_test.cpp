@@ -7,6 +7,54 @@
 
 #include "square_map.h"
 
+template <typename Container>
+bool is_strictly_sorted(const Container& c) {
+    return std::is_sorted(c.begin(), c.end()) && std::adjacent_find(c.begin(), c.end()) == c.end();
+}
+
+/**
+ * is_valid returns true if the passed square map has a valid internal structure. It does this
+ * through extracting the adapted container and checking its contents:
+ *.  - The container may at most contain two strictly sorted ranges.
+ *.  - The map is empty if and only if the container is empty.
+ *.  - If the container is not empty, split_point() must be valid and unequal to end()
+ *.  - If split_point() is begin(), there is only one range.
+ *.  - If there are two ranges, the left range must be at least kMinMergeSize.
+ *.  - If there are two ranges, the right range may not be larger than 2x the square root of the
+ *     size of the left range.
+ *.  - Within each range, keys must be unique.
+ *   - The largest element should be the last one in the underlying container.
+ *.  - The number of duplicate keys is the number of erased elements, and therefore the difference
+ *     between the size of the underlying container and the reported size of the map.
+ *.  - The last item may not be erased.
+ */
+template <typename Map>
+bool is_valid(Map m) {
+    Map m_copy = m;  // copy to avoid modifying the original map
+    auto container = std::move(m_copy).extract();
+
+    // Check properties of an empty map
+    if (container.empty()) {
+        EXPECT_EQ(m.size(), 0);
+        EXPECT_EQ(m.begin(), m.end());
+        EXPECT_EQ(m.split_point(), m.end());
+
+        return true;
+    }
+
+    // The map is not empty here. Start with checking basic split_point and map properties.
+    EXPECT_FALSE(m.empty());
+    EXPECT_NE(m.split_point(), m.end());
+
+    auto split_key = m.split_point()->first;
+    EXPECT_EQ(std::count(container.begin(), container.end(), split_key), 1);  // Must be unique
+
+    auto split_it = container.begin();
+    while (split_it != container.end() && split_it->first != split_key) ++split_it;
+
+    return true;
+}
+
 TEST(OrderedMap, Empty) {
     using Map = geert::square_map<uint32_t, bool, std::less<uint32_t>, std::vector<std::pair<uint32_t, bool>>>;
     Map empty;

@@ -2,5 +2,6 @@
 .vscode
 *.pch
 build
+build_release
 plots
 compile_commands.json

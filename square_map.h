@@ -178,6 +178,16 @@ public:
         return iterator::make(end, end);
     }
 
+    iterator split_point() noexcept {
+        if (_container.empty()) return end();
+        return find(_container[_split].first);
+    }
+
+    const_iterator split_point() const noexcept {
+        auto it = _vthis()->_container.split_point();
+        return iterator::make(it._it, it._alt);
+    }
+
     // Capacity
     bool empty() const noexcept {
         return !size();
@@ -227,6 +237,8 @@ public:
         // merge_if_needed(); // Need to do, but invalidates pos. Skip for now.
         return iterator::make(_container.insert(++pos._alt, {pos._it->first, T()}), ++pos._it);
     }
+
+    container_type extract() && { return std::move(_container); }
 
     std::pair<iterator, bool> insert(value_type&& value) {
         merge_if_needed();
