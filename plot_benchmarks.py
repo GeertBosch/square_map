@@ -77,35 +77,55 @@ def create_plots(df, output_dir='plots'):
 
     # Set up the plotting style
     plt.style.use('default')
-    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
+    
+    # Define colors for map types and line styles for operations
+    map_type_colors = {
+        'square_map_int': '#1f77b4',
+        'std_map_int': '#2ca02c', 
+        'flat_map_int': '#ff7f0e',
+        'unordered_map_int': '#d62728',
+        'vector_int': '#9467bd',
+        'unknown': '#8c564b'
+    }
+    
+    operation_styles = {
+        'Insert': '-',
+        'Lookup': '--',
+        'RangeIteration': ':'
+    }
 
-    # Get unique operations
-    operations = df['operation'].unique()
+    # Create combined plots for each generator type
+    generators = df['generator'].unique()
 
-    for operation in operations:
-        op_data = df[df['operation'] == operation]
+    for generator in generators:
+        gen_data = df[df['generator'] == generator]
 
-        # Create separate plots for each generator type
-        generators = op_data['generator'].unique()
+        plt.figure(figsize=(12, 8))
 
-        for generator in generators:
-            gen_data = op_data[op_data['generator'] == generator]
+        # Plot each combination of map type and operation
+        map_types = gen_data['map_type'].unique()
+        operations = gen_data['operation'].unique()
+        
+        for map_type in map_types:
+            map_color = map_type_colors.get(map_type, '#8c564b')
+            
+            for operation in operations:
+                op_style = operation_styles.get(operation, '-')
+                
+                subset_data = gen_data[
+                    (gen_data['map_type'] == map_type) & 
+                    (gen_data['operation'] == operation)
+                ].sort_values('size')
 
-            plt.figure(figsize=(12, 8))
-
-            # Plot each map type
-            map_types = gen_data['map_type'].unique()
-            for i, map_type in enumerate(map_types):
-                map_data = gen_data[gen_data['map_type'] == map_type].sort_values('size')
-
-                if len(map_data) > 0:
-                    plt.loglog(map_data['size'], map_data['time_per_item_ns'],
-                              'o-', label=map_type, color=colors[i % len(colors)],
+                if len(subset_data) > 0:
+                    plt.loglog(subset_data['size'], subset_data['time_per_item_ns'],
+                              marker='o', label=f'{map_type} - {operation}', 
+                              color=map_color, linestyle=op_style,
                               linewidth=2, markersize=6)
 
             plt.xlabel('Container Size', fontsize=12)
             plt.ylabel('Time per Item (nanoseconds)', fontsize=12)
-            plt.title(f'{operation} Performance - {generator}', fontsize=14)
+            plt.title(f'Performance Comparison - {generator}', fontsize=14)
             plt.legend(fontsize=10)
             plt.grid(True, alpha=0.3)
 
@@ -132,7 +152,7 @@ def create_plots(df, output_dir='plots'):
             plt.tight_layout()
 
             # Save the plot
-            filename = f"{output_dir}/{operation}_{generator}.png"
+            filename = f"{output_dir}/combined_{generator}.png"
             plt.savefig(filename, dpi=300, bbox_inches='tight')
             print(f"Saved plot: {filename}")
             plt.close()
@@ -150,6 +170,22 @@ def create_comparison_plot(df, output_dir='plots'):
 
     operations = ['Insert', 'Lookup', 'RangeIteration']
     generators = ['Sequential', 'Random']
+    
+    # Define colors for map types and line styles for operations
+    map_type_colors = {
+        'square_map_int': '#1f77b4',
+        'std_map_int': '#2ca02c', 
+        'flat_map_int': '#ff7f0e',
+        'unordered_map_int': '#d62728',
+        'vector_int': '#9467bd',
+        'unknown': '#8c564b'
+    }
+    
+    operation_styles = {
+        'Insert': '-',
+        'Lookup': '--',
+        'RangeIteration': ':'
+    }
 
     for i, operation in enumerate(operations):
         for j, generator in enumerate(generators):
@@ -159,13 +195,14 @@ def create_comparison_plot(df, output_dir='plots'):
 
             if len(op_data) > 0:
                 map_types = op_data['map_type'].unique()
-                colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
 
-                for k, map_type in enumerate(map_types):
+                for map_type in map_types:
                     map_data = op_data[op_data['map_type'] == map_type].sort_values('size')
                     if len(map_data) > 0:
+                        color = map_type_colors.get(map_type, '#8c564b')
+                        style = operation_styles.get(operation, '-')
                         plt.loglog(map_data['size'], map_data['time_per_item_ns'],
-                                  'o-', label=map_type, color=colors[k % len(colors)],
+                                  marker='o', label=map_type, color=color, linestyle=style,
                                   linewidth=1.5, markersize=4)
 
                 plt.xlabel('Size' if i == len(operations) - 1 else '')

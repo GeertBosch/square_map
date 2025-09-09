@@ -38,7 +38,10 @@ rebuild: clean all
 
 # Run tests
 test: all
-	@$(MAKE) -C $(BUILD_DIR) test
+	@$(MAKE) -C $(BUILD_DIR) test || { \
+		echo "Tests failed, rerunning with verbose output..."; \
+		$(MAKE) -C $(BUILD_DIR) test ARGS="--rerun-failed --output-on-failure"; \
+	}
 
 # Run benchmarks
 benchmark: all
@@ -50,7 +53,9 @@ $(BUILD_DIR)/quickbench_results.json: square_map_bm.cpp square_map.h
 	@$(MAKE) -C $(BUILD_DIR) square_map_bm
 	@cd $(BUILD_DIR) && ./square_map_bm --benchmark_filter="BM_(Insert|Lookup|RangeIteration)<square_map_int, KeyOrder::Random>" --benchmark_out=quickbench_results.json --benchmark_min_time=0.1s
 
-quickbench: $(BUILD_DIR)/quickbench_results.json
+quickbench: all
+	@$(MAKE) -C $(BUILD_DIR) square_map_bm
+	@cd $(BUILD_DIR) && ./square_map_bm --benchmark_filter="BM_(Insert|Lookup|RangeIteration)<square_map_int, KeyOrder::Random>" --benchmark_out=quickbench_results.json --benchmark_min_time=0.1s
 
 # Generate reference benchmarks (std::map and boost::flat_map with Random key order)
 $(BUILD_DIR)/quickbench_reference.json: square_map_bm.cpp

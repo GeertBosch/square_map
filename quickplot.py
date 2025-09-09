@@ -66,45 +66,77 @@ def create_quickplot(square_map_df, reference_df=None, output_file='plots/quickp
     plt.style.use('default')
     plt.figure(figsize=(12, 8))
     
-    operations = ['Insert', 'Lookup', 'RangeIteration']
-    colors = ['#1f77b4', '#ff7f0e', '#2ca02c']
+    # Define colors for map types and line styles for operations
+    map_type_colors = {
+        'square_map_int': '#1f77b4',
+        'std_map_int': '#2ca02c', 
+        'flat_map_int': '#ff7f0e',
+        'unordered_map_int': '#d62728',
+        'vector_int': '#9467bd'
+    }
     
-    # Plot square_map results first (solid lines)
-    for i, operation in enumerate(operations):
+    operation_styles = {
+        'Insert': '-',
+        'Lookup': '--',
+        'RangeIteration': ':'
+    }
+    
+    operation_markers = {
+        'Insert': 'o',
+        'Lookup': '^',
+        'RangeIteration': 's'
+    }
+    
+    operations = ['Insert', 'Lookup', 'RangeIteration']
+    
+    # Plot square_map results first
+    for operation in operations:
         op_data = square_map_df[square_map_df['operation'] == operation].sort_values('size')
         
         if len(op_data) > 0:
+            color = map_type_colors.get('square_map_int', '#1f77b4')
+            style = operation_styles.get(operation, '-')
+            marker = operation_markers.get(operation, 'o')
+            
             plt.loglog(op_data['size'], op_data['time_per_item_ns'], 
-                      'o', label=f'{operation} (square_map)', color=colors[i % len(colors)],
-                      linewidth=2, markersize=6, linestyle='-')
+                      marker=marker, label=f'{operation} (square_map)', color=color,
+                      linewidth=2, markersize=6, linestyle=style)
     
     # Plot reference implementations if provided
     if reference_df is not None and not reference_df.empty:
         reference_df = reference_df[reference_df['time_per_item_ns'].notna()]
         
-        # Plot std::map results second (dashed lines)
-        for i, operation in enumerate(operations):
+        # Plot std::map results
+        for operation in operations:
             std_map_data = reference_df[
                 (reference_df['operation'] == operation) & 
                 (reference_df['map_type'] == 'std_map_int')
             ].sort_values('size')
             
             if len(std_map_data) > 0:
+                color = map_type_colors.get('std_map_int', '#ff7f0e')
+                style = operation_styles.get(operation, '-')
+                marker = operation_markers.get(operation, 'o')
+                
                 plt.loglog(std_map_data['size'], std_map_data['time_per_item_ns'], 
-                          '^', label=f'{operation} (std::map)', color=colors[i % len(colors)],
-                          linewidth=2, markersize=5, linestyle='--', alpha=0.8)
+                          marker=marker, label=f'{operation} (std::map)', color=color,
+                          linewidth=2, markersize=5, linestyle=style, alpha=0.8)
         
-        # Plot boost::flat_map results third (dotted lines)
-        for i, operation in enumerate(operations):
+        # Plot boost::flat_map results
+        for operation in operations:
             flat_map_data = reference_df[
                 (reference_df['operation'] == operation) & 
                 (reference_df['map_type'] == 'flat_map_int')
             ].sort_values('size')
             
             if len(flat_map_data) > 0:
+                color = map_type_colors.get('flat_map_int', '#2ca02c')
+                style = operation_styles.get(operation, '-')
+                marker = operation_markers.get(operation, 'o')
+                
                 plt.loglog(flat_map_data['size'], flat_map_data['time_per_item_ns'], 
-                          's', label=f'{operation} (boost::flat_map)', color=colors[i % len(colors)],
-                          linewidth=2, markersize=5, linestyle=':', alpha=0.8)
+                          marker=marker, label=f'{operation} (boost::flat_map)', color=color,
+                          linewidth=2, markersize=5, linestyle=style, alpha=0.8)
     
     plt.xlabel('Container Size', fontsize=12)
     plt.ylabel('Time per Item (nanoseconds)', fontsize=12)

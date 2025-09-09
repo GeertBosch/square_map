@@ -7,14 +7,13 @@
 
 namespace geert {
 
-constexpr std::size_t kMaxRightSize = 128;
-
 template <class Key,
           class T,
           class Compare = std::less<Key>,
           class Container = std::vector<std::pair<Key, T>>>
 class square_map {
 public:
+    static constexpr std::size_t kMinMergeSize = 128;
     using key_type = Key;
     using mapped_type = T;
     using container_type = Container;
@@ -142,57 +141,13 @@ public:
         return const_cast<T&>(_cthis()->at(key));
     }
     const T& at(const Key& key) const {
-        auto split = _container.begin() + _split, end = _container.end();
-        auto leftIt = std::lower_bound(_container.begin(), split, key, value_key_compare());
-
-        bool inLeft = leftIt != split && !Compare()(key, leftIt->first);
-        if (inLeft && !_erased) return leftIt->second;  // Fast path if there are no erased items.
-
-        // If the item is both in the left and the right range, it has been erased.
-        auto rightIt = std::lower_bound(split, end, key, value_key_compare());
-        bool inRight = rightIt != end && !Compare()(key, rightIt->first);
-
-        if (inLeft && !inRight) return leftIt->second;  // Most common if there are erased items.
-        if (inRight && !inLeft) return rightIt->second;
-
-        // Either the key is unknown or it has been erased.
-        if (inLeft && inRight) throw std::out_of_range("square_map<>: key has been erased");
+        if (auto it = find(key); it != end()) return it->second;
         throw std::out_of_range("square_map<>: index out of range");
     }
 
     T& operator[](const Key& key) {
-        // Bound complexity by merging when the size of the right range is double the square
-        // root of the size of the left range. 
-        if (auto rightSize = _container.size() - _split;
-            rightSize >= kMaxRightSize && rightSize * rightSize >= 4 * _split) {
-            merge_with_binary_search(_container.begin(), _container.begin() + _split,
-                                     _container.end());
-            // keep the largest key in the right range, iterators invalidated.
-            _split = _container.size() - 1;
-        }
-
-        auto split = _container.begin() + _split, end = _container.end();
-        auto leftIt = std::lower_bound(_container.begin(), split, key, value_key_compare());
-
-        bool inLeft = leftIt != split && !Compare()(key, leftIt->first);
-        if (inLeft && !_erased) return leftIt->second;  // Fast path if there are no erased items.
-
-        // If the item is both in the left and the right range, it has been erased.
-        auto rightIt = std::lower_bound(split, end, key, value_key_compare());
-        bool inRight = rightIt != end && !Compare()(key, rightIt->first);
-
-        if (inLeft && inRight) {
-            // Reinsert erased item: remove the right one and return the left one.
-            --_erased;
-            _container.erase(rightIt);
-            return leftIt->second;
-        }
-
-        // If just found in the right side, return that one.
-        if (inRight) return rightIt->second;
-
-        // Not found, insert a new item in the right range.
-        return _container.insert(rightIt, {key, T()})->second;
+        auto result = insert({key, T()});
+        return result.first->second;
     }
 
     // Iterators
@@ -246,6 +201,17 @@ public:
         _container.shrink_to_fit();
     }
 
+    void merge_if_needed() {
+        // Bound complexity by merging when the size of the right range is double the square
+        // root of the size of the left range. Call before inserting into the right range.
+
+        auto rightSize = _container.size() - _split;
+        if (rightSize < kMinMergeSize || rightSize * rightSize < 4 * _split) return;
+        merge_with_binary_search(_container.begin(), _container.begin() + _split, _container.end());
+        // keep the largest key in the right range, iterators invalidated.
+        _split = _container.size() - 1;
+    }
+
     // Modifiers
     void clear() noexcept {
         square_map fresh;  // Avoids resetting individual fields with chances of forgetting one.
@@ -253,45 +219,44 @@ public:
     }
 
     constexpr iterator erase(const_iterator pos) {
-        // If pos points into the right range or at the last item of the left range, directly remove
-        // the element.
-        const size_type idx = std::distance(_container.begin(), pos._it);
-        if (pos._it >= pos._alt || idx == --_split)
-            return iterator::make(_container.erase(pos._it), pos._alt);
+        // Item is in the right range, so just erase it.
+        if (!(pos._it < pos._alt)) return iterator::make(_container.erase(pos._it), pos._alt);
 
-        // For elements properly in the left range, mark it as deleted, by replacement with its next
-        // larger neighbor: copy the key, move the value and increment _erased. Compact as needed.
-        auto& neighbor = *(pos._it + 1);
-        _erased++;
-        *pos._it = {neighbor.first, std::move(neighbor.second)};
-        if (_erased * _erased <= _container.size())
-            return iterator::make(_container.begin() + idx, pos._alt);
-
-        // Maintain complexity bounds for operations after erasing sqrt(N) items.
-        auto key = neighbor.first;  // Iterators will be invalidated.
-        auto it = _container.begin() + _split;
-        it = std::unique(_container.begin(), it);
-        _container.erase(it, _container.begin() + _split);
-        _split = _erased = 0;
-        return find(key);
+        // Item is in the left range, so add it to the right side as well to mark it as deleted.
+        ++_erased;
+        // merge_if_needed(); // Need to do, but invalidates pos. Skip for now.
+        return iterator::make(_container.insert(++pos._alt, {pos._it->first, T()}), ++pos._it);
     }
 
     std::pair<iterator, bool> insert(value_type&& value) {
-        // Bound complexity by merging when the size of the right range is double the square root of
-        // the size of the left range.
-        if (auto rightSize = _container.size() - _split;
-            rightSize >= kMaxRightSize && rightSize * rightSize >= 4 * _split) {
-            merge_with_binary_search(_container.begin(), _container.begin() + _split, _container.end());
-            // keep the largest key in the right range, iterators invalidated.
-            _split = _container.size() - 1;
-        }
-        auto split = _container.begin() + _split, end = _container.end();
+        merge_if_needed();
+
+        auto begin = _container.begin(), end = _container.end();
+        auto split = begin + _split;
+
+        // Locate both left and right positions to check for erased items.
+        auto leftIt = std::lower_bound(begin, split, value.first, value_key_compare());
         auto rightIt = std::lower_bound(split, end, value.first, value_key_compare());
-        auto leftIt = std::lower_bound(_container.begin(), split, value.first, value_key_compare());
-        if (leftIt != split && !value_key_compare()(value, leftIt->first))
-            return {iterator::make(leftIt, rightIt), false};  // found an exact match in the left
-        if (rightIt != end && !value_key_compare()(value, rightIt->first))
-            return {iterator::make(rightIt, leftIt), false};  // found an exact match in the right
+
+        bool inLeft = leftIt != split && !Compare()(value.first, leftIt->first);
+        bool inRight = rightIt != end && !Compare()(value.first, rightIt->first);
+
+        // If the item was found on the left, it will stay there in all cases.
+        if (inLeft) {
+            // If the item is on both sides, it has been erased, so undo that erasure.
+            if (inRight) --_erased, _container.erase(rightIt);
+
+            leftIt->second = std::move(value.second);
+            return {iterator::make(leftIt, rightIt), false};
+        }
+
+        // If just found in the right side, return that one.
+        if (inRight) {
+            rightIt->second = std::move(value.second);
+            return {iterator::make(rightIt, leftIt), false};
+        }
+
+        // Not found, insert a new item in the right range.
         return {iterator::make(_container.insert(rightIt, std::move(value)), leftIt), true};
     }
 

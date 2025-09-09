@@ -4,6 +4,15 @@ project(square_map CXX)
 # Generate compile commands for VSCode
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Set default build type to Release if not specified
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release)
+endif()
+
+# Set debug flags for better debugging experience
+set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DDEBUG")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
+
 # Enable testing
 enable_testing()
 
@@ -63,3 +72,6 @@ add_executable(complexity_test complexity_test.cpp)
 target_include_directories(complexity_test PRIVATE 
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+# Add the complexity test
+add_test(NAME complexity_test COMMAND complexity_test)

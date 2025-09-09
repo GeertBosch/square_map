@@ -1,16 +1,3 @@
-<style>
-@import url('https://fonts.googleapis.com/css?family=Fira+Sans&display=swap');
-@import url('https://fonts.googleapis.com/css?family=Fira+Code&display=swap');
-body, div {
-  font-family: 'Fira Sans', sans-serif;
-}
-code, pre {
-  background: none !important;
-  font-family: 'Fira Code', monospace !important;
-}
-</style>
-<div>
-
 # SquareMap - A Memory-Efficient Ordered Map
 
 ## Summary

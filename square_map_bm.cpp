@@ -10,18 +10,23 @@
 #include <algorithm>
 #include <boost/container/flat_map.hpp>
 #include <cstdint>
+#include <iostream>
 #include <map>
 #include <random>
+
+#ifndef DEBUG
+#define DEBUG 0
+#endif
+
+constexpr bool kDebug = 0;
 
 #include "square_map.h"
 
 namespace {
 
 constexpr uint32_t kMinContainerSize = 11;
-constexpr uint32_t kMaxContainerSize = 1'100'000;
+constexpr uint32_t kMaxContainerSize = kDebug ? 110'000 : 1'100'000;
 constexpr uint32_t kMaxSlowContainerSize = kMaxContainerSize / 10;  // Smaller size for O(n) ops
-
-constexpr size_t kPreallocSize = 16;
 
 template <class Key, class T, class Compare = std::less<Key>>
 using flat_map = boost::container::flat_map<Key, T, Compare>;
@@ -111,7 +116,7 @@ static void BM_RangeIteration(benchmark::State& state) {
 
     for (auto _ : state) {
         size_t sum = 0;
-        for (const auto& [key, value] : m) {
+        for (auto&& [key, value] : m) {
             benchmark::DoNotOptimize(sum += value);
         }
         benchmark::DoNotOptimize(sum);
@@ -167,4 +172,16 @@ struct BenchmarkRegistrar {
 
 }  // namespace
 
-BENCHMARK_MAIN();
+int main(int argc, char** argv) {
+    if (kDebug) {
+        std::cerr << "WARNING: Benchmark compiled in DEBUG mode! Results may be unreliable.\n"
+                  << "For accurate performance measurements, compile with optimization flags.\n"
+                  << "----------------------------------------\n\n";
+    }
+
+    benchmark::Initialize(&argc, argv);
+    if (benchmark::ReportUnrecognizedArguments(argc, argv)) return 1;
+    benchmark::RunSpecifiedBenchmarks();
+    benchmark::Shutdown();
+    return 0;
+}
