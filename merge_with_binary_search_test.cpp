@@ -130,3 +130,149 @@ TEST_F(MergeWithBinarySearchTest, InterleavedElements) {
     // Test where elements are perfectly interleaved
     test_merge_equivalence<int>({1, 3, 5, 7, 9}, {2, 4, 6, 8, 10});
 }
+
+TEST_F(MergeWithBinarySearchTest, StabilityViolationReproducer) {
+    // Minimal test case that exposes the stability violation
+    // This test should FAIL with current implementation
+
+    std::vector<std::pair<int, int>> data = {
+        {4, 40},  // Left range: (4,40)
+        {4, 0},   // Right range: (4,0)
+    };
+
+    auto middle = data.begin() + 1;  // Split after first element
+
+    // Use a custom comparator that only compares the first element (key)
+    // This makes (4,40) and (4,0) truly equal for comparison purposes
+    auto key_compare = [](const std::pair<int, int>& a, const std::pair<int, int>& b) {
+        return a.first < b.first;
+    };
+
+    merge_with_binary_search(data.begin(), middle, data.end(), key_compare);
+
+    // Check if (4,40) from left still comes before (4,0) from right
+    // This should FAIL because the current implementation violates stability
+    EXPECT_EQ(data[0].second, 40)
+        << "STABILITY VIOLATION: First element should be (4,40) from left range, but got ("
+        << data[0].first << "," << data[0].second << ")";
+    EXPECT_EQ(data[1].second, 0)
+        << "STABILITY VIOLATION: Second element should be (4,0) from right range, but got ("
+        << data[1].first << "," << data[1].second << ")";
+}
+
+TEST_F(MergeWithBinarySearchTest, StdInplaceMergeStabilityVerification) {
+    // Verify that std::inplace_merge passes the same stability test
+    // This should PASS, confirming our test is correct
+
+    std::vector<std::pair<int, int>> data = {
+        {4, 40},  // Left range: (4,40)
+        {4, 0},   // Right range: (4,0)
+    };
+
+    auto middle = data.begin() + 1;  // Split after first element
+
+    // Use a custom comparator that only compares the first element (key)
+    // This makes (4,40) and (4,0) truly equal for comparison purposes
+    auto key_compare = [](const std::pair<int, int>& a, const std::pair<int, int>& b) {
+        return a.first < b.first;
+    };
+
+    std::inplace_merge(data.begin(), middle, data.end(), key_compare);
+
+    // Check if (4,40) from left still comes before (4,0) from right
+    // This should PASS because std::inplace_merge is guaranteed to be stable
+    EXPECT_EQ(data[0].second, 40) << "std::inplace_merge stability test failed: First element "
+                                     "should be (4,40) from left range, but got ("
+                                  << data[0].first << "," << data[0].second << ")";
+    EXPECT_EQ(data[1].second, 0) << "std::inplace_merge stability test failed: Second element "
+                                    "should be (4,0) from right range, but got ("
+                                 << data[1].first << "," << data[1].second << ")";
+}
+
+TEST_F(MergeWithBinarySearchTest, StableMerge) {
+    // Test that merge is stable: elements that compare equal maintain their relative order
+
+    // Create a struct where we can distinguish between equal elements
+    struct TrackedValue {
+        int value;
+        int original_position;
+
+        bool operator<(const TrackedValue& other) const { return value < other.value; }
+
+        bool operator==(const TrackedValue& other) const {
+            return value == other.value && original_position == other.original_position;
+        }
+    };
+
+    // Create first range: values [1, 2, 2, 3, 3, 3] with position tracking
+    std::vector<TrackedValue> range1 = {
+        {1, 1},  // position 1
+        {2, 2},  // position 2
+        {2, 3},  // position 3
+        {3, 4},  // position 4
+        {3, 5},  // position 5
+        {3, 6}   // position 6
+    };
+
+    // Create second range: values [2, 2, 3, 4] with position tracking
+    std::vector<TrackedValue> range2 = {
+        {2, 7},  // position 7
+        {2, 8},  // position 8
+        {3, 9},  // position 9
+        {4, 10}  // position 10
+    };
+
+    // Both ranges are already sorted
+
+    // Test with std::inplace_merge (which is guaranteed to be stable)
+    std::vector<TrackedValue> std_result = range1;
+    std_result.insert(std_result.end(), range2.begin(), range2.end());
+    auto std_middle = std_result.begin() + range1.size();
+    std::inplace_merge(std_result.begin(), std_middle, std_result.end());
+
+    // Test with our implementation
+    std::vector<TrackedValue> our_result = range1;
+    our_result.insert(our_result.end(), range2.begin(), range2.end());
+    auto our_middle = our_result.begin() + range1.size();
+    merge_with_binary_search(our_result.begin(), our_middle, our_result.end());
+
+    // Compare results - they should be identical for a stable merge
+    ASSERT_EQ(std_result.size(), our_result.size()) << "Result sizes should match";
+
+    for (size_t i = 0; i < std_result.size(); ++i) {
+        EXPECT_EQ(std_result[i].value, our_result[i].value)
+            << "Values should match at position " << i;
+        EXPECT_EQ(std_result[i].original_position, our_result[i].original_position)
+            << "Original positions should match at position " << i
+            << " (stability requirement violated)";
+    }
+
+    // Additional verification: check specific stability requirements
+    // For value=2: elements should appear in order [2, 3, 7, 8] (positions from left range first)
+    // For value=3: elements should appear in order [4, 5, 6, 9] (positions from left range first)
+
+    std::vector<int> value_2_positions, value_3_positions;
+    for (const auto& item : our_result) {
+        if (item.value == 2) {
+            value_2_positions.push_back(item.original_position);
+        } else if (item.value == 3) {
+            value_3_positions.push_back(item.original_position);
+        }
+    }
+
+    // For value=2: positions should be [2, 3] (from left range) followed by [7, 8] (from right
+    // range)
+    ASSERT_EQ(value_2_positions.size(), 4) << "Should have 4 elements with value=2";
+    EXPECT_EQ(value_2_positions[0], 2) << "First value=2 should have position 2";
+    EXPECT_EQ(value_2_positions[1], 3) << "Second value=2 should have position 3";
+    EXPECT_EQ(value_2_positions[2], 7) << "Third value=2 should have position 7";
+    EXPECT_EQ(value_2_positions[3], 8) << "Fourth value=2 should have position 8";
+
+    // For value=3: positions should be [4, 5, 6] (from left range) followed by [9] (from right
+    // range)
+    ASSERT_EQ(value_3_positions.size(), 4) << "Should have 4 elements with value=3";
+    EXPECT_EQ(value_3_positions[0], 4) << "First value=3 should have position 4";
+    EXPECT_EQ(value_3_positions[1], 5) << "Second value=3 should have position 5";
+    EXPECT_EQ(value_3_positions[2], 6) << "Third value=3 should have position 6";
+    EXPECT_EQ(value_3_positions[3], 9) << "Fourth value=3 should have position 9";
+}
