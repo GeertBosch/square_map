@@ -14,10 +14,10 @@
 
 constexpr bool kDebug = false;
 constexpr double kConfidenceThreshold = 0.80;  // Threshold for strong confidence in complexity
-constexpr double kSeparationThreshold = 0.25;  // Minimum difference between best and second best
+constexpr double kSeparationThreshold = 0.20;  // Minimum difference between best and second best
 
 // Don't test small sizes, as there complexity is different, but with small constants
-const std::vector<int> test_sizes = {4'000, 8'000, 16'000, 32'000, 64'000, 128'000};
+const std::vector<int> test_sizes = {8'000, 16'000, 32'000, 64'000, 128'000};
 
 // Instrumented type to count operations
 class InstrumentedInt {

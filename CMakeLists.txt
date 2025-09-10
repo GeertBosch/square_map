@@ -30,6 +30,11 @@ if(POLICY CMP0167)
 endif()
 find_package(Boost REQUIRED COMPONENTS container)
 
+# Explicitly set Boost include directories if not set by find_package
+if(NOT Boost_INCLUDE_DIRS)
+    set(Boost_INCLUDE_DIRS "/usr/local/include")
+endif()
+
 message(STATUS "Found GTest: ${GTEST_INCLUDE_DIRS}")
 message(STATUS "Found benchmark: ${benchmark_INCLUDE_DIRS}")
 message(STATUS "Found Boost: ${Boost_INCLUDE_DIRS}")
@@ -61,20 +66,20 @@ add_executable(square_map_bm square_map_bm.cpp)
 target_link_libraries(square_map_bm PRIVATE 
     benchmark::benchmark 
     Boost::container
-    Boost::headers
 )
 target_include_directories(square_map_bm PRIVATE 
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${Boost_INCLUDE_DIRS}
 )
 
 # Add complexity test executable
 add_executable(complexity_test complexity_test.cpp)
 target_link_libraries(complexity_test PRIVATE 
     Boost::container
-    Boost::headers
 )
 target_include_directories(complexity_test PRIVATE 
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${Boost_INCLUDE_DIRS}
 )
 
 # Add the complexity test

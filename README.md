@@ -35,6 +35,59 @@ cost. In reality, random accesses on large data structures are more expensive th
 accesses to the point that square maps can achieve similar asymptotical costs as tree maps. See the
 Myth of RAM for an empirical and theoretical underpinning of this notion.
 
+## Development and Debugging
+
+### Building the Project
+
+The project uses CMake and includes both release and debug configurations:
+
+```bash
+# Build release version (optimized)
+make
+
+# Build debug version (with debug symbols)
+make debug
+
+# Run all tests
+make test
+
+# Run debug tests
+make debug-test
+```
+
+### Debugging with VS Code
+
+The project is configured for debugging with lldb-dap in VS Code. Several debug configurations are available:
+
+1. **Debug square_map_test** - Debug the main square map unit tests
+2. **Debug merge_with_binary_search_test** - Debug the binary search merge tests  
+3. **Debug complexity_test** - Debug the complexity analysis tests
+4. **Debug with GTest filter** - Debug specific test cases using GTest filters
+5. **Debug Current Test** - Auto-detect and debug the test executable based on the current file
+
+#### Prerequisites
+
+- Ensure you have lldb-dap installed (comes with Xcode command line tools)
+- Install the CodeLLDB extension for VS Code (optional but recommended for enhanced debugging experience)
+
+#### Usage
+
+1. Open any test file (e.g., `square_map_test.cpp`)
+2. Set breakpoints where needed
+3. Press F5 or go to Run → Start Debugging
+4. Select the appropriate debug configuration
+5. For GTest filter configurations, enter a filter pattern when prompted (e.g., `SquareMapTest.*` or `*Insert*`)
+
+#### Debug Build Configuration
+
+Debug builds are automatically configured with:
+- Debug symbols (`-g`)
+- No optimization (`-O0`) 
+- Debug assertions enabled (`-DDEBUG`)
+- All executables built in the `build_debug/` directory
+
+The debug build task is automatically run before debugging to ensure you're debugging the latest code.
+
 ## Square Map Modification and Lookup
 
 As the square map is a refinement of the flat map, revisit properties of that data structure first.

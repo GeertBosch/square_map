@@ -5,6 +5,7 @@
 
 # Build directory
 BUILD_DIR := build
+DEBUG_BUILD_DIR := build_debug
 
 # Default target: ensure build directory exists and run make there
 all: $(BUILD_DIR)/Makefile
@@ -19,16 +20,44 @@ $(BUILD_DIR)/Makefile: CMakeLists.txt
 	@mkdir -p $(BUILD_DIR)
 	@cd $(BUILD_DIR) && cmake ..
 
+# Create debug build directory and generate Makefile if it doesn't exist
+$(DEBUG_BUILD_DIR)/Makefile: CMakeLists.txt
+	@mkdir -p $(DEBUG_BUILD_DIR)
+	@cd $(DEBUG_BUILD_DIR) && cmake -DCMAKE_BUILD_TYPE=Debug ..
+
+# Debug target: build all test executables in debug mode
+debug: $(DEBUG_BUILD_DIR)/Makefile
+	@$(MAKE) -C $(DEBUG_BUILD_DIR) square_map_test merge_with_binary_search_test complexity_test
+	@if [ -f $(DEBUG_BUILD_DIR)/compile_commands.json ]; then \
+		cp $(DEBUG_BUILD_DIR)/compile_commands.json . ; \
+		echo "Updated compile_commands.json for VSCode (Debug mode)"; \
+	fi
+	@echo "Debug executables built in $(DEBUG_BUILD_DIR)/"
+	@echo "Available debug executables:"
+	@echo "  $(DEBUG_BUILD_DIR)/square_map_test"
+	@echo "  $(DEBUG_BUILD_DIR)/merge_with_binary_search_test"
+	@echo "  $(DEBUG_BUILD_DIR)/complexity_test"
+
+# Run tests in debug mode
+debug-test: debug
+	@echo "Running tests in debug mode..."
+	@$(MAKE) -C $(DEBUG_BUILD_DIR) test || { \
+		echo "Debug tests failed, rerunning with verbose output..."; \
+		$(MAKE) -C $(DEBUG_BUILD_DIR) test ARGS="--rerun-failed --output-on-failure"; \
+	}
+
 # Clean target: remove all build files and plot files
 clean:
 	@echo "Cleaning build files..."
 	@rm -rf $(BUILD_DIR)
+	@rm -rf $(DEBUG_BUILD_DIR)
 	@echo "Cleaning plot files..."
 	@rm -rf plots/*.png
 	@echo "Cleaning test result files..."
 	@rm -f test_*.json
 	@echo "Cleaning benchmark result files..."
 	@rm -f $(BUILD_DIR)/*benchmark*.json
+	@rm -f $(DEBUG_BUILD_DIR)/*benchmark*.json
 	@echo "Cleaning compile commands..."
 	@rm -f compile_commands.json
 	@echo "Clean complete."
@@ -93,10 +122,12 @@ help:
 	@echo "  clean      - Remove all build files, plots, and test results"
 	@echo "  rebuild    - Clean and build"
 	@echo "  test       - Build and run tests"
+	@echo "  debug      - Build all test executables in debug mode"
+	@echo "  debug-test - Build and run tests in debug mode"
 	@echo "  benchmark  - Build and run benchmarks"
 	@echo "  quickbench - Build and run quick benchmarks (Smallish maps, Random key order)"
 	@echo "  quickplot  - Run quickbench and create/display a quick plot"
 	@echo "  plots      - Run benchmarks and generate plots"
 	@echo "  help       - Show this help message"
 
-.PHONY: all clean rebuild test benchmark quickbench quickplot plots help
+.PHONY: all clean rebuild test debug debug-test benchmark quickbench quickplot plots help

@@ -3,5 +3,6 @@
 *.pch
 build
 build_release
+build_debug
 plots
 compile_commands.json
