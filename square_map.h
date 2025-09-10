@@ -13,7 +13,7 @@ template <class Key,
           class Container = std::vector<std::pair<Key, T>>>
 class square_map {
 public:
-    static constexpr std::size_t kMinMergeSize = 128;
+    static constexpr std::size_t kMinSplitSize = 128;  // Below this size treat as a flat map
     using key_type = Key;
     using mapped_type = T;
     using container_type = Container;
@@ -216,7 +216,7 @@ public:
         // root of the size of the left range. Call before inserting into the right range.
 
         auto rightSize = _container.size() - _split;
-        if (rightSize < kMinMergeSize || rightSize * rightSize < 4 * _split) return;
+        if (rightSize < kMinSplitSize || rightSize * rightSize < 4 * _split) return;
         merge_with_binary_search(_container.begin(), _container.begin() + _split, _container.end());
         // keep the largest key in the right range, iterators invalidated.
         _split = _container.size() - 1;
@@ -229,8 +229,19 @@ public:
     }
 
     constexpr iterator erase(const_iterator pos) {
-        // Item is in the right range, so just erase it.
-        if (!(pos._it < pos._alt)) return iterator::make(_container.erase(pos._it), pos._alt);
+        // Item is in the right range or the last element of the left range, so just erase it.
+        if (!(pos._it < pos._alt)) {
+            auto past_it = _container.erase(pos._it);  // Points past the invalidated element
+            if (!(pos._alt < pos._alt)) _split = 0;    // Erased the last item from the right range.
+
+            return iterator::make(_container.erase(pos._it), pos._alt);
+        }
+
+        if (std::distance(_container.begin(), pos._it) == _split - 1) {
+            // Item is in the left range, but the left range is empty (can happen after merges).
+            // Just erase it.
+            return iterator::make(_container.erase(pos._it), pos._alt);
+        }
 
         // Item is in the left range, so add it to the right side as well to mark it as deleted.
         ++_erased;

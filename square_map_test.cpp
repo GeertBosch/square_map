@@ -7,52 +7,94 @@
 
 #include "square_map.h"
 
-template <typename Container>
-bool is_strictly_sorted(const Container& c) {
-    return std::is_sorted(c.begin(), c.end()) && std::adjacent_find(c.begin(), c.end()) == c.end();
+/**
+ * Returns true if and only if the container is sorted and has no duplicates.
+ */
+template <typename It>
+bool is_strictly_sorted(It begin, It end) {
+    return std::is_sorted(begin, end) && std::adjacent_find(begin, end) == end;
 }
 
 /**
- * is_valid returns true if the passed square map has a valid internal structure. It does this
+ * check_valid verifies that the passed square map has a valid internal structure. It does this
  * through extracting the adapted container and checking its contents:
- *.  - The container may at most contain two strictly sorted ranges.
- *.  - The map is empty if and only if the container is empty.
- *.  - If the container is not empty, split_point() must be valid and unequal to end()
- *.  - If split_point() is begin(), there is only one range.
- *.  - If there are two ranges, the left range must be at least kMinMergeSize.
- *.  - If there are two ranges, the right range may not be larger than 2x the square root of the
- *     size of the left range.
- *.  - Within each range, keys must be unique.
- *   - The largest element should be the last one in the underlying container.
- *.  - The number of duplicate keys is the number of erased elements, and therefore the difference
- *     between the size of the underlying container and the reported size of the map.
- *.  - The last item may not be erased.
+ *   - The map is empty if and only if the container is empty.
+ *   - If the container is not empty, split_point() must be valid and unequal to end()
+ *   - If split_point() is begin(), there the map is merged into one strictly sorted range and equal
+ *     to a flat map
+ *   - If split_point() is not begin():
+ *       1. the container has two strictly sorted ranges.
+ *       2. The first key of the right range must be less than the last key of the left range,
+ *          ensuring that the split is necessary.
+ *       3. The last key of the right range is larger than the last key of the left range,
+ *          ensuring that the last element in the map is also the last element in the container.
+ *          This property also implies that the last element cannot be a deleted element.
+ *       4. The size of the map is equal to the size of the container minus the number of duplicate
+ *          keys (indicating erased elements) that are present in both ranges.
+ *     Due to the above requirements it is not possible to make any guarantees about the relative
+ *     sizes of the two ranges, or even whether the left range is larger than kMinSplitSize:
+ *     repeatedly erasing the largest element in the left range can make it arbitrarily small,
+ *     as inserting a duplicate in the right range for erasure would violate rule 2.
  */
 template <typename Map>
-bool is_valid(Map m) {
+void check_valid(Map m) {
     Map m_copy = m;  // copy to avoid modifying the original map
     auto container = std::move(m_copy).extract();
 
+    // Check some universal properties. Note that sizes differ iff the map contains erased items.
+    EXPECT_EQ(container.empty(), m.empty());
+
     // Check properties of an empty map
-    if (container.empty()) {
+    if (m.empty()) {
         EXPECT_EQ(m.size(), 0);
         EXPECT_EQ(m.begin(), m.end());
         EXPECT_EQ(m.split_point(), m.end());
-
-        return true;
+        return;
     }
 
-    // The map is not empty here. Start with checking basic split_point and map properties.
-    EXPECT_FALSE(m.empty());
-    EXPECT_NE(m.split_point(), m.end());
+    // Properties of a non-empty map
+    EXPECT_GT(m.size(), 0);
+    EXPECT_NE(m.begin(), m.end());
 
-    auto split_key = m.split_point()->first;
-    EXPECT_EQ(std::count(container.begin(), container.end(), split_key), 1);  // Must be unique
+    // Check properties of a map with a single range
+    if (m.split_point() == m.begin()) {
+        // The map is merged into one range, so it should be a flat map.
+        EXPECT_TRUE(is_strictly_sorted(container.begin(), container.end()));
+        EXPECT_EQ(m.size(), container.size());
+        return;
+    }
 
+    // The map is split into two ranges. Elements that exist in both the left and the right
+    // range are considered erased, so the split point in the container is not necessarily
+    // container.begin + std::distance(m.begin, m.split_point). Find the container split point.
     auto split_it = container.begin();
+    EXPECT_NE(m.split_point(), m.end());
+    auto split_key = m.split_point()->first;
     while (split_it != container.end() && split_it->first != split_key) ++split_it;
 
-    return true;
+    // 1. Check that the two ranges are strictly sorted
+    EXPECT_TRUE(is_strictly_sorted(container.begin(), split_it));
+    EXPECT_TRUE(is_strictly_sorted(split_it, container.end()));
+
+    // 2. The first key of the right range must be less than the last key of the left range.
+    EXPECT_LT(split_key, (std::prev(split_it))->first);
+
+    // 3. The last key of the right range is larger than the last key of the left range.
+    EXPECT_GT((std::prev(container.end()))->first, (std::prev(split_it))->first);
+
+    // Compute the number of keys that are duplicated between the left and right ranges by
+    // iterating over the elements of the right (typically smaller) range and looking each
+    // key up in the left range. These duplicate keys indicate erased elements.
+    size_t num_erased = std::count_if(split_it, container.end(), [&](const auto& element) {
+        // Use a custom projection that extracts the key from pairs for comparison
+        auto key_compare = [](const typename Map::value_type& a,
+                              const typename Map::value_type& b) { return a.first < b.first; };
+        typename Map::value_type search_pair{element.first, {}};
+        return std::binary_search(container.begin(), split_it, search_pair, key_compare);
+    });
+
+    // 4. Check that the size difference is equal to the number of erased elements.
+    EXPECT_EQ(m.size() + num_erased, container.size());
 }
 
 TEST(OrderedMap, Empty) {
@@ -73,6 +115,7 @@ TEST(OrderedMap, SingleValue) {
     Map::key_type key = {};
     Map::mapped_type mapped = {};
     single.insert({key, mapped});
+    check_valid(single);
     EXPECT_EQ(single.size(), 1);
     EXPECT_FALSE(single.empty());
     EXPECT_NE(single.begin(), single.end());
@@ -91,6 +134,8 @@ TEST(OrderedMap, TwoValues) {
     Map::mapped_type mapped = {};
     two.insert({key2, mapped});
     two.insert({key1, mapped});
+    check_valid(two);
+
     EXPECT_EQ(two.size(), 2);
     EXPECT_FALSE(two.empty());
     EXPECT_THROW(two.at(key2 + 1), std::out_of_range);
@@ -111,6 +156,7 @@ TEST(OrderedMap, EraseTwo) {
     EXPECT_EQ(two.find(key2), two.begin());
     two.insert({key1, mapped});
     EXPECT_EQ(two.find(key1), two.begin());
+    check_valid(two);
 }
 
 TEST(OrderedMap, SortTenValues) {
@@ -123,6 +169,7 @@ TEST(OrderedMap, SortTenValues) {
         EXPECT_TRUE(ret.second);
         EXPECT_EQ(ret.first->first, key);
     }
+    check_valid(ten);
     EXPECT_EQ(ten.size(), 10);
     EXPECT_EQ(std::next(ten.begin(), 10), ten.end());
     EXPECT_TRUE(std::is_sorted(ten.begin(), ten.end()));
@@ -138,6 +185,7 @@ TEST(OrderedMap, TenSquares) {
     Map::key_type keys[10] = {5, 3, 2, 10, 8, 6, 9, 4, 1, 7};
     for (auto key : keys)
         tenSquares.insert({key * key, {}});
+    check_valid(tenSquares);
     EXPECT_EQ(tenSquares.count(16), 1);
     EXPECT_EQ(tenSquares.find(13), tenSquares.end());
 }
@@ -148,6 +196,7 @@ TEST(OrderedMap, FindNext) {
     Map fifteenNumbers;
     for (auto key : keys)
         fifteenNumbers.insert({key, {}});
+    check_valid(fifteenNumbers);
     for (auto key : keys) {
         auto it = fifteenNumbers.find(key);
         EXPECT_NE(it, fifteenNumbers.end());
@@ -162,6 +211,7 @@ TEST(OrderedMap, Iters) {
     Map map;
     for (int j = 0; j < 9; ++j)
         map.insert({j, true});
+    check_valid(map);
     Map::iterator it = map.begin();
     Map::const_iterator cit = map.cbegin();
     [](const Map& cmap, Map::iterator it) {
@@ -176,7 +226,7 @@ TEST(OrderedMap, Iters) {
         ++it;
 }
 
-// Performance tests with shuffled data
+// Correctness tests with shuffled data
 class ShuffledMap : public ::testing::Test {
 protected:
     void SetUp() override {
@@ -186,7 +236,8 @@ protected:
         std::shuffle(numbers.begin(), numbers.end(), gen);
     }
 
-    const uint32_t kMapSize = 1000;
+    static constexpr uint32_t kMapSize = 1000;
+    static_assert(kMapSize > 3 * geert::square_map<uint32_t, bool>::kMinSplitSize);
     std::mt19937 gen;
     std::vector<uint32_t> numbers;
 };
@@ -196,6 +247,7 @@ TEST_F(ShuffledMap, IterateAll) {
     Map map;
     for (auto n : numbers)
         map[n];
+    check_valid(map);
     auto it = map.begin();
     for (uint32_t j = 1; j <= kMapSize; ++j)
         EXPECT_EQ(it++->first, j);
@@ -208,7 +260,7 @@ TEST_F(ShuffledMap, IterateRange) {
     Map map;
     for (auto n : numbers)
         map[n];
-
+    check_valid(map);
     std::uniform_int_distribution<> distrib(1, kRangeSize);
 
     for (uint32_t j = 1; j <= kMapSize - kRangeSize; j += distrib(gen)) {
@@ -225,6 +277,7 @@ TEST_F(ShuffledMap, Sieve1000) {
     Map isPrime;
     for (auto x : numbers)
         isPrime[x] = true;  // Until proven otherwise.
+    check_valid(isPrime);
     EXPECT_EQ(isPrime.size(), numbers.size());
     EXPECT_TRUE(std::is_sorted(isPrime.begin(), isPrime.end()));
 
@@ -239,6 +292,7 @@ TEST_F(ShuffledMap, Sieve1000) {
                 isPrime[notAPrime] = false;
         }
     }
+    check_valid(isPrime);
     EXPECT_EQ(sumPrimes, 76127);  // Sum of all primes up to 1000
 }
 
@@ -255,6 +309,7 @@ TEST(EraseMethod, BasicTwoElementsErase) {
     auto it1 = map.find(1);
     EXPECT_NE(it1, map.end());
     auto next_it = map.erase(it1);
+    check_valid(map);
     EXPECT_EQ(map.size(), 1);
     EXPECT_EQ(next_it->first, 2);       // Should point to next element
     EXPECT_EQ(map.find(1), map.end());  // Element should be gone
@@ -264,6 +319,7 @@ TEST(EraseMethod, BasicTwoElementsErase) {
     auto it2 = map.find(2);
     EXPECT_NE(it2, map.end());
     auto end_it = map.erase(it2);
+    check_valid(map);
     EXPECT_EQ(map.size(), 0);
     EXPECT_EQ(end_it, map.end());       // Should point to end
     EXPECT_EQ(map.find(2), map.end());  // Element should be gone
@@ -295,7 +351,7 @@ TEST(EraseMethod, EraseFromRightRange) {
     Map map;
 
     // Insert more than kMinMergeSize entries to ensure we have items in the right range
-    constexpr uint32_t num_entries = Map::kMinMergeSize + 10;
+    constexpr uint32_t num_entries = Map::kMinSplitSize + 10;
     for (uint32_t i = 1; i <= num_entries; ++i) {
         map[i] = (i % 2 == 0);
     }
@@ -322,6 +378,7 @@ TEST(EraseMethod, EraseFromRightRange) {
     for (uint32_t i = 1; i <= num_entries - 5; ++i) {
         EXPECT_NE(map.find(i), map.end());
     }
+    check_valid(map);
 }
 #if 0
 TEST(EraseMethod, EraseFromLeftRange) {
