@@ -32,6 +32,9 @@ public:
         constexpr bool operator()(const value_type& left, const key_type& right) const {
             return Compare()(left.first, right);
         }
+        constexpr bool operator()(const key_type& left, const value_type& right) const {
+            return Compare()(left, right.first);
+        }
     };
 
     class const_iterator {
@@ -87,7 +90,7 @@ public:
         }
 
     protected:
-        // _it points to the current element, which either may be in either the range. _alt  points
+        // _it points to the current element, which either may be in either range. _alt  points
         // to the next (larger) element in the alternate range, or to a smaller one if that range is
         // exhausted. If _it points into the left range it is permissible for _alt to be pointed at
         // the first element of the right. Cursor advancement will reposition _alt using a linear
@@ -229,24 +232,47 @@ public:
     }
 
     constexpr iterator erase(const_iterator pos) {
+        // Precondition: pos is dereferenceable and belongs to *this.
+        if (!_split) {
+            // Only one range, just erase it.
+            auto past_it = _container.erase(pos._it);  // Points past the erased element
+            return iterator::make(past_it, past_it);
+        }
+        // Invariant: size() >= 2, as there is
         // Item is in the right range or the last element of the left range, so just erase it.
-        if (!(pos._it < pos._alt)) {
-            auto past_it = _container.erase(pos._it);  // Points past the invalidated element
-            if (!(pos._alt < pos._alt)) _split = 0;    // Erased the last item from the right range.
+        if (_container.begin() + (_split - 1) <= pos._it) {
+            //  [ 1 2 4 | 3 5 7 ] <- _split = 3
+            //        ^ pos._it = 2, erasing this merges both ranges: [ 1 2 3 | 5 7 ]
+            //                                                              ^ returned
+            //  [ 1 2 4 | 3 5 7 ] <- _split = 3
+            //            ^ pos._it = 3, erasing this merges both ranges: [ 1 2 4 | 5 7 ]
+            //                                                                      ^ returned
 
-            return iterator::make(_container.erase(pos._it), pos._alt);
+            // Points past the erased element, all other iterators are invalidated.
+            auto past_it = _container.erase(pos._it);
+            // If we erased the last remaining item from the left range, meaning past_it points to
+            // begin(), if past_it == _container.end() == _container.begin() + _split, or if past_it
+            // points to an element whose key is strictly larger than the immediately preceding key,
+            // we have effectively merged both ranges and will reset the split point to zero.
+
+            bool merged = past_it == _container.begin() ||
+                          (past_it == _container.end() && _split == _container.size()) ||
+                          Compare()((std::prev(past_it))->first, past_it->first);
+            if (merged) _split = 0;
+            // Still need to think about erased elements
+            if (past_it == _container.end()) return end();
+            return find(past_it->first);
         }
 
-        if (std::distance(_container.begin(), pos._it) == _split - 1) {
-            // Item is in the left range, but the left range is empty (can happen after merges).
-            // Just erase it.
-            return iterator::make(_container.erase(pos._it), pos._alt);
-        }
+        // Item is strictly in the left range, so insert it into the right to mark it as erased.
+        Key key = pos._it->first;
+        auto it = std::upper_bound(_container.begin(), _container.begin() + _split, key,
+                                   value_key_compare());
 
-        // Item is in the left range, so add it to the right side as well to mark it as deleted.
         ++_erased;
-        // merge_if_needed(); // Need to do, but invalidates pos. Skip for now.
-        return iterator::make(_container.insert(++pos._alt, {pos._it->first, T()}), ++pos._it);
+        auto next_key = std::next(pos)->first;
+        _container.emplace(it, value_type{key, T()});  // Invalidates all iterators.
+        return find(next_key);
     }
 
     container_type extract() && { return std::move(_container); }

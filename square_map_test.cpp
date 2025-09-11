@@ -26,15 +26,15 @@ bool is_strictly_sorted(It begin, It end) {
  *       1. the container has two strictly sorted ranges.
  *       2. The first key of the right range must be less than the last key of the left range,
  *          ensuring that the split is necessary.
- *       3. The last key of the right range is larger than the last key of the left range,
- *          ensuring that the last element in the map is also the last element in the container.
- *          This property also implies that the last element cannot be a deleted element.
+ *       3. The last key of the right range is larger than the last key of the left range, ensuring
+ *          that the last element in the map is also the last element in the container. This
+ *          property also implies that the last element cannot be a deleted element.
  *       4. The size of the map is equal to the size of the container minus the number of duplicate
- *          keys (indicating erased elements) that are present in both ranges.
- *     Due to the above requirements it is not possible to make any guarantees about the relative
- *     sizes of the two ranges, or even whether the left range is larger than kMinSplitSize:
- *     repeatedly erasing the largest element in the left range can make it arbitrarily small,
- *     as inserting a duplicate in the right range for erasure would violate rule 2.
+ *          keys (indicating erased elements) that are present in both ranges. Due to the above
+ *          requirements it is not possible to make any guarantees about the relative sizes of the
+ *          two ranges, or even whether the left range is larger than kMinSplitSize: repeatedly
+ *          erasing the largest element in the left range can make that range arbitrarily small, as
+ *          inserting a duplicate in the right range for erasure would violate rule 2.
  */
 template <typename Map>
 void check_valid(Map m) {
