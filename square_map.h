@@ -41,6 +41,12 @@ public:
         }
     };
 
+    struct value_compare {
+        constexpr bool operator()(const value_type& left, const value_type& right) const {
+            return Compare()(left.first, right.first);
+        }
+    };
+
     class const_iterator {
     public:
         using iterator_category = std::forward_iterator_tag;
@@ -50,42 +56,42 @@ public:
         using reference = value_type&;
 
         const_iterator& operator++() {
-            // Precondition: _it and _alt are dereferenceable.
+            // Precondition: s0 and s1 are dereferenceable.
 
-            auto initial_key = _it->first;
+            auto initial_key = s0->first;
 
             while (true) {
-                // Case: s_0 = s_1 - we're at the last element, advance to end
-                if (_it == _alt) {
-                    ++_it;       // This makes _it point to end()
-                    _alt = _it;  // Set _alt to end() as well to match cend() behavior
+                // Case: s0 == s1 - we're at the last element, advance to end
+                if (s0 == s1) {
+                    ++s0;     // This makes s0 point to end()
+                    s1 = s0;  // Set s1 to end() as well to match cend() behavior
                     return *this;
                 }
 
-                // Advance s_0 to get s_0'
-                ++_it;
-                auto next_key = _it->first;
+                // Advance s0 to get s0'
+                ++s0;
+                auto next_key = s0->first;
 
-                // Case: s_0' = s_1 - we're at the last element after advancement
-                if (_it == _alt) {
+                // Case: s0' = s1 - we're at the last element after advancement
+                if (s0 == s1) {
                     return *this;
                 }
 
-                // Case: *s_0' < *s_1 - valid iterator unless exhausting left range
-                if (Compare()(_it->first, _alt->first)) {
-                    if (Compare()(_it->first, initial_key)) _it = _alt;
+                // Case: *s0' < *s1 - valid iterator unless exhausting left range
+                if (Compare()(s0->first, s1->first)) {
+                    if (Compare()(s0->first, initial_key)) s0 = s1;
                     return *this;
                 }
 
-                // Case: *s_1 < *s_0' - need to swap ranges, or deal with exhausting the left range
-                if (Compare()(_alt->first, _it->first)) {
-                    if (Compare()(_it->first, initial_key)) _it = _alt;
-                    std::swap(_it, _alt);
+                // Case: *s1 < *s0' - need to swap ranges, or deal with exhausting the left range
+                if (Compare()(s1->first, s0->first)) {
+                    if (Compare()(s0->first, initial_key)) s0 = s1;
+                    std::swap(s0, s1);
                     return *this;
                 }
 
-                // Case: *s_0' = *s_1 (keys equal) - we're on a deleted item, loop again
-                // This means _it->first == _alt->first (not _it == _alt)
+                // Case: *s0' == *s1 (keys equal) - we're on a deleted item, loop again
+                // This means s0->first == s1->first (not s0 == s1)
                 // Continue the loop to advance once more
             }
         }
@@ -95,29 +101,21 @@ public:
             return ++*this, pre;
         }
 
-        bool operator==(const const_iterator& other) const {
-            return _it == other._it;
-        }
+        bool operator==(const const_iterator& other) const { return s0 == other.s0; }
 
-        bool operator!=(const const_iterator& other) const {
-            return _it != other._it;
-        }
+        bool operator!=(const const_iterator& other) const { return s0 != other.s0; }
 
-        reference operator*() {
-            return *_it;
-        }
+        reference operator*() { return *s0; }
 
-        pointer operator->() {
-            return &*_it;
-        }
+        pointer operator->() { return &*s0; }
 
     protected:
-        // _it points to the current element, which either may be in either range. _alt  points
+        // s0 points to the current element, which either may be in either range. s1  points
         // to the next (larger) element in the alternate range, or to a smaller one if that range is
-        // exhausted. If _it points into the left range it is permissible for _alt to be pointed at
-        // the first element of the right. Cursor advancement will reposition _alt using a linear
+        // exhausted. If s0 points into the left range it is permissible for s1 to be pointed at
+        // the first element of the right. Cursor advancement will reposition s1 using a linear
         // scan.
-        container_iterator _it, _alt;
+        container_iterator s0, s1;
 
         friend square_map;
     };
@@ -138,25 +136,19 @@ public:
             return ++*this, pre;
         }
 
-        reference operator*() {
-            return *const_iterator::_it;
-        }
+        reference operator*() { return *const_iterator::s0; }
 
-        pointer operator->() {
-            return &*const_iterator::_it;
-        }
+        pointer operator->() { return &*const_iterator::s0; }
 
     private:
         friend square_map;
-        static iterator make(container_iterator it, container_iterator alt) {
+        static iterator make(container_iterator s0, container_iterator s1) {
             iterator ret;
-            ret._it = it;
-            ret._alt = alt;
+            ret.s0 = s0;
+            ret.s1 = s1;
             return ret;
         }
-        static iterator make(const_iterator it) {
-            return make(it._it, it._alt);
-        }
+        static iterator make(const_iterator it) { return make(it.s0, it.s1); }
     };
 
     static_assert(sizeof(iterator) == 2 * sizeof(container_iterator));
@@ -181,7 +173,7 @@ public:
     // Iterators
     iterator begin() noexcept {
         auto it = cbegin();
-        return iterator::make(it._it, it._alt);
+        return iterator::make(it.s0, it.s1);
     }
     const_iterator begin() const noexcept {
         return cbegin();
@@ -196,7 +188,7 @@ public:
 
     iterator end() noexcept {
         auto it = cend();
-        return iterator::make(it._it, it._alt);
+        return iterator::make(it.s0, it.s1);
     }
     const_iterator end() const noexcept {
         return cend();
@@ -213,7 +205,7 @@ public:
 
     const_iterator split_point() const noexcept {
         auto it = _vthis()->_container.split_point();
-        return iterator::make(it._it, it._alt);
+        return iterator::make(it.s0, it.s1);
     }
 
     // Capacity
@@ -221,7 +213,7 @@ public:
         return !size();
     }
 
-    size_type size() const noexcept { return _container.size() - _erased; }
+    size_type size() const noexcept { return _container.size() - 2 * _erased; }
 
     size_type max_size() const noexcept {
         return _container.max_size();
@@ -248,24 +240,24 @@ public:
     constexpr iterator erase(const_iterator pos) {
         // Precondition: pos is dereferenceable and belongs to *this.
         if (!_split) {
-            // Only one range, just erase it. TODO: Deal with large unsplit container
-            auto past_it = _container.erase(pos._it);  // Points past the erased element
+            // Only one range, just erase it. TODO: Deal with large unsplit container efficiency
+            auto past_it = _container.erase(pos.s0);  // Points past the erased element
             return iterator::make(past_it, past_it);
         }
         // Invariant: split > 0 && size() >= 3, as there is at least one element in the left range,
         // one at the split point that is smaller, and one at the end that is larger.
 
         // Item is in the right range or the last element of the left range, so just erase it.
-        if (_container.begin() + (_split - 1) <= pos._it) {
+        if (_container.begin() + (_split - 1) <= pos.s0) {
             //  [ 1 2 4 | 3 5 7 ] <- _split = 3
-            //        ^ pos._it = 2, erasing this merges both ranges: [ 1 2 3 | 5 7 ]
+            //        ^ pos.s0 = 2, erasing this merges both ranges: [ 1 2 3 | 5 7 ]
             //                                                              ^ returned
             //  [ 1 2 4 | 3 5 7 ] <- _split = 3
-            //            ^ pos._it = 3, erasing this merges both ranges: [ 1 2 4 | 5 7 ]
+            //            ^ pos.s0 = 3, erasing this merges both ranges: [ 1 2 4 | 5 7 ]
             //                                                                      ^ returned
 
             // Points past the erased element, all other iterators are invalidated.
-            auto past_it = _container.erase(pos._it);
+            auto past_it = _container.erase(pos.s0);
             // If we erased the last remaining item from the left range, meaning past_it points to
             // begin(), if past_it == _container.end() == _container.begin() + _split, or if past_it
             // points to an element whose key is strictly larger than the immediately preceding key,
@@ -282,58 +274,31 @@ public:
         }
 
         // Item is strictly in the left range, so insert it into the right to mark it as erased.
-        Key key = pos._it->first;
+        Key key = pos.s0->first;
         auto it = std::lower_bound(_container.begin() + _split, _container.end(), key,
                                    value_key_compare());
 
         ++_erased;
-        auto next_key = std::next(pos)->first;
+        auto&& next_key = std::next(pos)->first;
         _container.emplace(it, value_type{key, T()});  // Invalidates all iterators.
         return find(next_key);
     }
 
     container_type extract() && { return std::move(_container); }
 
-    // Create a square_map from a container and split point (opposite of extract)
-    static square_map inject(container_type&& container, size_type split_index = 0) {
-        square_map result;
-        result._container = std::move(container);
-        if (split_index >= result._container.size()) {
-            result._split = 0;  // Treat as flat map
-        } else {
-            result._split = split_index;
-        }
-        result._erased = 0;
-        return result;
-    }
-
-    // Overload that takes a const reference to the container
-    static square_map inject(const container_type& container, size_type split_index = 0) {
-        square_map result;
-        result._container = container;
-        if (split_index >= result._container.size()) {
-            result._split = 0;  // Treat as flat map
-        } else {
-            result._split = split_index;
-        }
-        result._erased = 0;
-        return result;
+    // Replaces the underlying container with the given one
+    void replace(container_type&& cont) {
+        _container = std::move(cont);
+        _split = 0;   // Reset to flat state
+        _erased = 0;  // Reset erased count
     }
 
     // Overload that takes an iterator to specify the split point
-    static square_map inject(container_type&& container,
-                             typename container_type::iterator split_it) {
-        size_type split_index =
-            split_it == container.end() ? 0 : std::distance(container.begin(), split_it);
-        return inject(std::move(container), split_index);
-    }
-
-    // Overload that takes const container and iterator
-    static square_map inject(const container_type& container,
-                             typename container_type::const_iterator split_it) {
-        size_type split_index =
-            split_it == container.end() ? 0 : std::distance(container.begin(), split_it);
-        return inject(container, split_index);
+    void replace(container_type&& cont, typename container_type::iterator split_it) {
+        auto split_index = std::distance(cont.begin(), split_it);
+        _container = std::move(cont);
+        _split = split_index == _container.size() ? 0 : split_index;
+        _erased = 0;  // Reset erased count
     }
 
     // Merge split ranges into a single flat range
@@ -345,39 +310,40 @@ public:
             [](const value_type& a, const value_type& b) { return Compare()(a.first, b.first); });
         _split = 0;  // Now flat
 
-        remove_duplicates();
+        _container.erase(remove_duplicates(_container.begin(), _container.end()), _container.end());
+        _erased = 0;
     }
 
 private:
-    void remove_duplicates() {
-        if (!_erased) return;
+    static container_iterator remove_duplicates(container_iterator first, container_iterator last) {
+        if (first == last) return last;
 
-        auto it = _container.begin();
+        // Skip past non-duplicated elements
+        while (first + 1 != last && value_compare()(*first, *(first + 1))) ++first;
 
-        // Find first duplicate pair of elements. There is at least such pair, as there is at least
-        // one non-erased element (the last one), so no need to check for end() here.
-        while (Compare()((it)->first, (it + 1)->first)) ++it;
+        // If a single element remains, all elements were unique and we're done
+        if (first + 1 == last) return last;
 
-        // First duplicate elements found: switch to compaction mode
-        auto write_it = it;
-        do {
-            // We're at a duplicate element. Skip all consecutive duplicates.
-            do {
-                it += 2;
-                --_erased;
-            } while (!Compare()(it->first, (it + 1)->first));
+        // Found a duplicate element. From here on we'll need to move elements for compaction.
+        auto write_it = first;
+        while (first + 1 != last) {
+            // Loop invariant: first points a sequence of two or more duplicate elements, all
+            // of which we need to remove from the output. Start with skipping the first one.
+            ++first;
 
-            // We're at a unique element. Copy all unique elements until the next duplicate.
-            do {
-                *write_it++ = std::move(*it++);
-            } while (Compare()(it->first, (it + 1)->first));
-        } while (_erased);
+            // Skip past any additional duplicates beyond a single pair.
+            while (first + 1 != last && !value_compare()(*first, *(first + 1))) ++first;
 
-        // All remaining elements are unique, copy them.
-        write_it = std::move(it, _container.end(), write_it);
+            // Finally skip the last of the duplicate elements
+            if (++first == last) break;
 
-        // Erase the unused elements at the end
-        _container.erase(write_it, _container.end());
+            // Move any unique elements
+            while (first + 1 != last && value_compare()(*first, *(first + 1)))
+                *write_it++ = std::move(*first++);
+        }
+        if (first != last) *write_it++ = std::move(*first++);
+
+        return write_it;  // erasing elements beyond write_it to be done by caller
     }
 
 public:
@@ -386,62 +352,51 @@ public:
         auto split = begin + _split;
 
         // Locate both left and right positions to check for erased items.
-        auto leftIt = std::lower_bound(begin, split, value.first, value_key_compare());
-        auto rightIt = std::lower_bound(split, end, value.first, value_key_compare());
+        auto left_it = std::lower_bound(begin, split, value.first, value_key_compare());
+        auto right_it = std::lower_bound(split, end, value.first, value_key_compare());
 
-        bool inLeft = leftIt != split && !Compare()(value.first, leftIt->first);
-        bool inRight = rightIt != end && !Compare()(value.first, rightIt->first);
+        bool in_left = left_it != split && !Compare()(value.first, left_it->first);
+        bool in_right = right_it != end && !Compare()(value.first, right_it->first);
 
         // If the item was found on the left, it will stay there in all cases.
-        if (inLeft) {
+        if (in_left) {
             // If the item is on both sides, it has been erased, so undo that erasure.
-            if (inRight) --_erased, rightIt = _container.erase(rightIt);
+            if (in_right) --_erased, right_it = _container.erase(right_it);
 
-            leftIt->second = std::move(value.second);
-            return {iterator::make(leftIt, rightIt), false};
+            left_it->second = std::move(value.second);
+            return {iterator::make(left_it, right_it), false};
         }
 
         // If just found in the right side, return that one.
-        if (inRight) {
-            rightIt->second = std::move(value.second);
-            return {iterator::make(rightIt, leftIt), false};
+        if (in_right) {
+            right_it->second = std::move(value.second);
+            return {iterator::make(right_it, left_it), false};
         }
 
         // Not found, insert a new item in the right range.
 
         // If the insertion point is not too far from the end of the container, just insert.
-        auto move_distance = std::distance(rightIt, end);
+        auto move_distance = std::distance(right_it, end);
         auto right_size = std::distance(split, end);
-        auto leftIndex = std::distance(begin, leftIt);
+        auto leftIndex = std::distance(begin, left_it);
         if (move_distance < kMinSplitSize || right_size * right_size * 4 < _split) {
-            rightIt = _container.insert(rightIt, std::move(value));  // Invalidates all iterators.
-            return {iterator::make(rightIt, _container.begin() + leftIndex), true};
+            right_it = _container.insert(right_it, std::move(value));  // Invalidates all iterators.
+            return {iterator::make(right_it, _container.begin() + leftIndex), true};
         }
 
         // Need to merge, as inserting in the right range would require moving too many elements.
-        if (_split) {
-            // Use a comparator that only compares keys to ensure stability for equal keys
-            auto key_compare = [](const value_type& a, const value_type& b) {
-                return Compare()(a.first, b.first);
-            };
-            merge_with_binary_search(begin, split, end, key_compare);
-        }
+        if (_split) merge_with_binary_search(begin, split, end, value_compare());
+        _split = 0;
 
         // If there were erased items, they're now duplicates that must be removed.
-        if (_erased) {
-            // Use key-only comparator to identify duplicate keys
-            auto key_equal = [](const value_type& a, const value_type& b) {
-                return !Compare()(a.first, b.first) && !Compare()(b.first, a.first);
-            };
-            _container.erase(std::unique(_container.begin(), _container.end(), key_equal), _container.end());
-        }
+        if (_erased) remove_duplicates();
         _erased = 0;
 
         // Still need to insert, but doing it in the proper place would require moving too many
         // elements. Instead, insert right before the end and create a split point.
-        rightIt = _container.insert(std::prev(_container.end()), std::move(value));
-        _split = rightIt - _container.begin();
-        return {iterator::make(rightIt, _container.begin() + leftIndex), true};
+        right_it = _container.insert(std::prev(_container.end()), std::move(value));
+        _split = right_it - _container.begin();
+        return {iterator::make(right_it, _container.begin() + leftIndex), true};
     }
 
     void swap(square_map& other) noexcept {
@@ -461,7 +416,7 @@ public:
             // Only one range, do a single binary search. No erased items to check for.
             auto it = std::lower_bound(c.begin(), c.end(), key, value_key_compare());
             if (it == c.end() || Compare()(key, it->first)) return end();
-            return iterator::make(it, std::prev(c.end()));  // _alt is the last element
+            return iterator::make(it, std::prev(c.end()));  // s1 is the last element
         }
         auto split = c.begin() + _split;
         auto leftIt = std::lower_bound(c.begin(), split, key, value_key_compare());
@@ -473,6 +428,10 @@ public:
                : leftIt != split ? iterator::make(rightIt, leftIt)
                                  : iterator::make(rightIt, std::prev(c.end()));
     }
+
+    // Test-only accessors
+    size_type& test_erased_ref() { return _erased; }
+    const size_type& test_erased_ref() const { return _erased; }
 
 private:
     const square_map* _cthis() noexcept {
