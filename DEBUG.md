@@ -3,10 +3,10 @@
 ## Available Debug Configurations
 
 1. **Debug square_map_test** - Main unit tests
-2. **Debug merge_with_binary_search_test** - Binary search merge tests
+2. **Debug algorithms_test** - Binary search merge tests
 3. **Debug complexity_test** - Performance and complexity tests
 4. **Debug square_map_test (with GTest filter)** - Filtered unit tests
-5. **Debug merge_with_binary_search_test (with GTest filter)** - Filtered merge tests
+5. **Debug algorithms_test (with GTest filter)** - Filtered merge tests
 6. **Debug Current Test (Auto-detect)** - Automatically detects test from current file
 
 ## Quick Start

@@ -1,0 +1,32 @@
+{
+  "tests": 1,
+  "failures": 0,
+  "disabled": 0,
+  "errors": 0,
+  "timestamp": "2025-09-15T10:25:55Z",
+  "time": "0s",
+  "name": "AllTests",
+  "testsuites": [
+    {
+      "name": "MergeWithBinarySearchTest",
+      "tests": 1,
+      "failures": 0,
+      "disabled": 0,
+      "errors": 0,
+      "timestamp": "2025-09-15T10:25:55Z",
+      "time": "0s",
+      "testsuite": [
+        {
+          "name": "StabilityViolationReproducer",
+          "file": "\/Users\/bosch\/square_map\/merge_with_binary_search_test.cpp",
+          "line": 134,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2025-09-15T10:25:55Z",
+          "time": "0s",
+          "classname": "MergeWithBinarySearchTest"
+        }
+      ]
+    }
+  ]
+}

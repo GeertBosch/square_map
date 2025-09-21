@@ -3,7 +3,7 @@
 #include <iterator>
 #include <vector>
 
-#include "merge_with_binary_search.h"
+#include "algorithms.h"
 
 namespace geert {
 
@@ -109,7 +109,7 @@ public:
 
         pointer operator->() { return &*s0; }
 
-    protected:
+    private:
         // s0 points to the current element, which either may be in either range. s1  points
         // to the next (larger) element in the alternate range, or to a smaller one if that range is
         // exhausted. If s0 points into the left range it is permissible for s1 to be pointed at
@@ -233,8 +233,8 @@ public:
 
     // Modifiers
     void clear() noexcept {
-        square_map fresh;  // Avoids resetting individual fields with chances of forgetting one.
-        swap(fresh);
+        square_map fresh;
+        swap(fresh);  // Avoids resetting individual fields with chances of forgetting one.
     }
 
     constexpr iterator erase(const_iterator pos) {
@@ -303,47 +303,18 @@ public:
 
     // Merge split ranges into a single flat range
     void merge() {
-        if (_split == 0) return;  // Already flat
+        if (!_split) return;  // Already flat
 
-        merge_with_binary_search(
-            _container.begin(), _container.begin() + _split, _container.end(),
-            [](const value_type& a, const value_type& b) { return Compare()(a.first, b.first); });
+        geert::merge_with_binary_search(_container.begin(), _container.begin() + _split,
+                                        _container.end(), value_compare());
         _split = 0;  // Now flat
 
-        _container.erase(remove_duplicates(_container.begin(), _container.end()), _container.end());
+        if (!_erased) return;
+
+        _container.erase(
+            geert::remove_duplicates(_container.begin(), _container.end(), value_compare()),
+            _container.end());
         _erased = 0;
-    }
-
-private:
-    static container_iterator remove_duplicates(container_iterator first, container_iterator last) {
-        if (first == last) return last;
-
-        // Skip past non-duplicated elements
-        while (first + 1 != last && value_compare()(*first, *(first + 1))) ++first;
-
-        // If a single element remains, all elements were unique and we're done
-        if (first + 1 == last) return last;
-
-        // Found a duplicate element. From here on we'll need to move elements for compaction.
-        auto write_it = first;
-        while (first + 1 != last) {
-            // Loop invariant: first points a sequence of two or more duplicate elements, all
-            // of which we need to remove from the output. Start with skipping the first one.
-            ++first;
-
-            // Skip past any additional duplicates beyond a single pair.
-            while (first + 1 != last && !value_compare()(*first, *(first + 1))) ++first;
-
-            // Finally skip the last of the duplicate elements
-            if (++first == last) break;
-
-            // Move any unique elements
-            while (first + 1 != last && value_compare()(*first, *(first + 1)))
-                *write_it++ = std::move(*first++);
-        }
-        if (first != last) *write_it++ = std::move(*first++);
-
-        return write_it;  // erasing elements beyond write_it to be done by caller
     }
 
 public:
@@ -385,12 +356,7 @@ public:
         }
 
         // Need to merge, as inserting in the right range would require moving too many elements.
-        if (_split) merge_with_binary_search(begin, split, end, value_compare());
-        _split = 0;
-
-        // If there were erased items, they're now duplicates that must be removed.
-        if (_erased) remove_duplicates();
-        _erased = 0;
+        merge();
 
         // Still need to insert, but doing it in the proper place would require moving too many
         // elements. Instead, insert right before the end and create a split point.

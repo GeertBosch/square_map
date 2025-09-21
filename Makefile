@@ -27,7 +27,7 @@ $(DEBUG_BUILD_DIR)/Makefile: CMakeLists.txt
 
 # Debug target: build all test executables in debug mode
 debug: $(DEBUG_BUILD_DIR)/Makefile
-	@$(MAKE) -C $(DEBUG_BUILD_DIR) square_map_test merge_with_binary_search_test complexity_test
+	@$(MAKE) -C $(DEBUG_BUILD_DIR) square_map_test algorithms_test complexity_test
 	@if [ -f $(DEBUG_BUILD_DIR)/compile_commands.json ]; then \
 		cp $(DEBUG_BUILD_DIR)/compile_commands.json . ; \
 		echo "Updated compile_commands.json for VSCode (Debug mode)"; \
@@ -35,7 +35,7 @@ debug: $(DEBUG_BUILD_DIR)/Makefile
 	@echo "Debug executables built in $(DEBUG_BUILD_DIR)/"
 	@echo "Available debug executables:"
 	@echo "  $(DEBUG_BUILD_DIR)/square_map_test"
-	@echo "  $(DEBUG_BUILD_DIR)/merge_with_binary_search_test"
+	@echo "  $(DEBUG_BUILD_DIR)/algorithms_test"
 	@echo "  $(DEBUG_BUILD_DIR)/complexity_test"
 
 # Run tests in debug mode

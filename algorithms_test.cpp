@@ -1,4 +1,4 @@
-#include "merge_with_binary_search.h"
+#include "algorithms.h"
 #include <gtest/gtest.h>
 #include <algorithm>
 #include <vector>
@@ -24,8 +24,8 @@ protected:
         std::vector<T> our_result = data1;
         our_result.insert(our_result.end(), data2.begin(), data2.end());
         auto our_middle = our_result.begin() + data1.size();
-        merge_with_binary_search(our_result.begin(), our_middle, our_result.end());
-        
+        geert::merge_with_binary_search(our_result.begin(), our_middle, our_result.end());
+
         EXPECT_EQ(std_result, our_result) << "Merge results should be identical";
     }
     
@@ -45,8 +45,8 @@ protected:
         std::vector<T> our_result = data1;
         our_result.insert(our_result.end(), data2.begin(), data2.end());
         auto our_middle = our_result.begin() + data1.size();
-        merge_with_binary_search(our_result.begin(), our_middle, our_result.end(), comp);
-        
+        geert::merge_with_binary_search(our_result.begin(), our_middle, our_result.end(), comp);
+
         EXPECT_EQ(std_result, our_result) << "Merge results should be identical";
     }
 };
@@ -148,7 +148,7 @@ TEST_F(MergeWithBinarySearchTest, StabilityViolationReproducer) {
         return a.first < b.first;
     };
 
-    merge_with_binary_search(data.begin(), middle, data.end(), key_compare);
+    geert::merge_with_binary_search(data.begin(), middle, data.end(), key_compare);
 
     // Check if (4,40) from left still comes before (4,0) from right
     // This should FAIL because the current implementation violates stability
@@ -234,7 +234,7 @@ TEST_F(MergeWithBinarySearchTest, StableMerge) {
     std::vector<TrackedValue> our_result = range1;
     our_result.insert(our_result.end(), range2.begin(), range2.end());
     auto our_middle = our_result.begin() + range1.size();
-    merge_with_binary_search(our_result.begin(), our_middle, our_result.end());
+    geert::merge_with_binary_search(our_result.begin(), our_middle, our_result.end());
 
     // Compare results - they should be identical for a stable merge
     ASSERT_EQ(std_result.size(), our_result.size()) << "Result sizes should match";

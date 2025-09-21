@@ -16,8 +16,9 @@ This document provides guidelines for AI agents working with the `square_map` C+
 ### Primary Files
 - `square_map.h` - Main container implementation
 - `square_map_test.cpp` - Comprehensive test suite
-- `merge_with_binary_search.h` - Stable merge algorithm
 - `square_map_bm.cpp` - Benchmark suite
+- `algorithms.h` - Stable merge algorithm
+- `algorithms_test.cpp` - Unit tests for algorithms
 - `README.md` - Theoretical foundation and performance analysis
 
 ### Key Methods
