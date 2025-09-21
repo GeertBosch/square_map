@@ -352,7 +352,7 @@ public:
         auto leftIndex = std::distance(begin, left_it);
         if (move_distance < kMinSplitSize || right_size * right_size * 4 < _split) {
             right_it = _container.insert(right_it, std::move(value));  // Invalidates all iterators.
-            return {iterator::make(right_it, _container.begin() + leftIndex), true};
+            return {iterator::make(right_it, _container.begin() + left_index), true};
         }
 
         // Need to merge, as inserting in the right range would require moving too many elements.
@@ -362,7 +362,7 @@ public:
         // elements. Instead, insert right before the end and create a split point.
         right_it = _container.insert(std::prev(_container.end()), std::move(value));
         _split = right_it - _container.begin();
-        return {iterator::make(right_it, _container.begin() + leftIndex), true};
+        return {iterator::make(right_it, _container.begin() + left_index), true};
     }
 
     void swap(square_map& other) noexcept {
@@ -385,14 +385,14 @@ public:
             return iterator::make(it, std::prev(c.end()));  // s1 is the last element
         }
         auto split = c.begin() + _split;
-        auto leftIt = std::lower_bound(c.begin(), split, key, value_key_compare());
-        auto rightIt = std::lower_bound(split, c.end(), key, value_key_compare());
-        bool isLeft = leftIt < split && !Compare()(key, leftIt->first);
-        bool isRight = rightIt < c.end() && !Compare()(key, rightIt->first);
-        if (isLeft == isRight) return end();  // Erased or non-existing item
-        return isLeft            ? iterator::make(leftIt, rightIt)
-               : leftIt != split ? iterator::make(rightIt, leftIt)
-                                 : iterator::make(rightIt, std::prev(c.end()));
+        auto left_it = std::lower_bound(c.begin(), split, key, value_key_compare());
+        auto right_it = std::lower_bound(split, c.end(), key, value_key_compare());
+        bool in_left = left_it < split && !Compare()(key, left_it->first);
+        bool in_right = right_it < c.end() && !Compare()(key, right_it->first);
+        if (in_left == in_right) return end();  // Erased or non-existing item
+        return in_left            ? iterator::make(left_it, right_it)
+               : left_it != split ? iterator::make(right_it, left_it)
+                                  : iterator::make(right_it, std::prev(c.end()));
     }
 
     // Test-only accessors
