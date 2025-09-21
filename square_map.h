@@ -322,7 +322,8 @@ public:
         auto begin = _container.begin(), end = _container.end();
         auto split = begin + _split;
 
-        // Locate both left and right positions to check for erased items.
+        // Locate both left and right positions to check for erased items. Even if there are no
+        // erased elements we need both to create a valid iterator to return.
         auto left_it = std::lower_bound(begin, split, value.first, value_key_compare());
         auto right_it = std::lower_bound(split, end, value.first, value_key_compare());
 
@@ -349,8 +350,8 @@ public:
         // If the insertion point is not too far from the end of the container, just insert.
         auto move_distance = std::distance(right_it, end);
         auto right_size = std::distance(split, end);
-        auto leftIndex = std::distance(begin, left_it);
-        if (move_distance < kMinSplitSize || right_size * right_size * 4 < _split) {
+        auto left_index = std::distance(begin, left_it);
+        if (move_distance < kMinSplitSize || right_size * right_size < 3 * _split) {
             right_it = _container.insert(right_it, std::move(value));  // Invalidates all iterators.
             return {iterator::make(right_it, _container.begin() + left_index), true};
         }
