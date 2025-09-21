@@ -276,3 +276,136 @@ TEST_F(MergeWithBinarySearchTest, StableMerge) {
     EXPECT_EQ(value_3_positions[2], 6) << "Third value=3 should have position 6";
     EXPECT_EQ(value_3_positions[3], 9) << "Fourth value=3 should have position 9";
 }
+
+class RemoveDuplicatesTest : public ::testing::Test {
+protected:
+    template <typename T>
+    void test_remove_duplicates_behavior(std::vector<T> input, std::vector<T> expected) {
+        // Sort the input first
+        std::sort(input.begin(), input.end());
+
+        // Test with our implementation
+        std::vector<T> result = input;
+        auto new_end = geert::remove_duplicates(result.begin(), result.end());
+        result.erase(new_end, result.end());
+
+        EXPECT_EQ(result, expected) << "Remove duplicates should keep only truly unique elements";
+    }
+
+    template <typename T, typename Compare>
+    void test_remove_duplicates_behavior_with_comp(std::vector<T> input, std::vector<T> expected,
+                                                   Compare comp) {
+        // Sort the input first with the comparator
+        std::sort(input.begin(), input.end(), comp);
+
+        // Test with our implementation
+        std::vector<T> result = input;
+        auto new_end = geert::remove_duplicates(result.begin(), result.end(), comp);
+        result.erase(new_end, result.end());
+
+        EXPECT_EQ(result, expected) << "Remove duplicates should keep only truly unique elements";
+    }
+};
+
+TEST_F(RemoveDuplicatesTest, EmptyRange) {
+    std::vector<int> empty_vec;
+    auto new_end = geert::remove_duplicates(empty_vec.begin(), empty_vec.end());
+    EXPECT_EQ(new_end, empty_vec.end());
+}
+
+TEST_F(RemoveDuplicatesTest, SingleElement) {
+    std::vector<int> single = {42};
+    auto new_end = geert::remove_duplicates(single.begin(), single.end());
+    EXPECT_EQ(new_end, single.end());
+    EXPECT_EQ(single[0], 42);
+}
+
+TEST_F(RemoveDuplicatesTest, NoDuplicates) {
+    test_remove_duplicates_behavior<int>({1, 2, 3, 4, 5}, {1, 2, 3, 4, 5});
+}
+
+TEST_F(RemoveDuplicatesTest, AllDuplicates) {
+    std::vector<int> data = {3, 3, 3, 3, 3};
+    auto new_end = geert::remove_duplicates(data.begin(), data.end());
+    EXPECT_EQ(std::distance(data.begin(), new_end), 0);
+}
+
+TEST_F(RemoveDuplicatesTest, ConsecutivePairs) {
+    // {1, 1, 2, 2, 3, 3, 4, 4} -> {} (all elements have duplicates)
+    test_remove_duplicates_behavior<int>({1, 1, 2, 2, 3, 3, 4, 4}, {});
+}
+
+TEST_F(RemoveDuplicatesTest, ConsecutiveTriples) {
+    // {1, 1, 1, 2, 2, 2, 3, 3, 3} -> {} (all elements have duplicates)
+    test_remove_duplicates_behavior<int>({1, 1, 1, 2, 2, 2, 3, 3, 3}, {});
+}
+
+TEST_F(RemoveDuplicatesTest, MixedDuplicates) {
+    // {1, 2, 2, 3, 4, 4, 4, 5, 6, 6} -> {1, 3, 5} (only elements without duplicates)
+    test_remove_duplicates_behavior<int>({1, 2, 2, 3, 4, 4, 4, 5, 6, 6}, {1, 3, 5});
+}
+
+TEST_F(RemoveDuplicatesTest, StringData) {
+    // {"apple", "apple", "banana", "cherry", "cherry"} -> {"banana"} (only unique element)
+    test_remove_duplicates_behavior<std::string>({"apple", "apple", "banana", "cherry", "cherry"},
+                                                 {"banana"});
+}
+
+TEST_F(RemoveDuplicatesTest, CustomComparator) {
+    // Test with reverse order comparator
+    auto reverse_comp = [](int a, int b) { return a > b; };
+    // {5, 5, 4, 3, 3, 2, 1, 1} -> {4, 2} (only elements without duplicates)
+    test_remove_duplicates_behavior_with_comp<int>({5, 5, 4, 3, 3, 2, 1, 1}, {4, 2}, reverse_comp);
+}
+
+TEST_F(RemoveDuplicatesTest, DefaultComparator) {
+    // Test that default comparator works (std::less)
+    std::vector<int> data = {1, 1, 2, 3, 3, 4, 5, 5, 5};
+    auto new_end = geert::remove_duplicates(data.begin(), data.end());
+    std::vector<int> result(data.begin(), new_end);
+    std::vector<int> expected = {2, 4};  // Only unique elements remain
+    EXPECT_EQ(result, expected);
+}
+
+TEST_F(RemoveDuplicatesTest, LargeData) {
+    std::vector<int> large_data;
+    std::vector<int> expected_unique;
+
+    // Create pattern: 0,0,1,2,2,3,4,4,5,6,6,7...
+    // Only elements that appear exactly once will be in expected result
+    for (int i = 0; i < 1000; ++i) {
+        large_data.push_back(i);
+        if (i % 3 == 0 || i % 3 == 2) {  // Add duplicates for most numbers
+            large_data.push_back(i);
+        } else {  // i % 3 == 1, this element is unique
+            expected_unique.push_back(i);
+        }
+    }
+    std::sort(large_data.begin(), large_data.end());
+    test_remove_duplicates_behavior(large_data, expected_unique);
+}
+
+TEST_F(RemoveDuplicatesTest, RandomData) {
+    std::random_device rd;
+    std::mt19937 gen(42);  // Fixed seed for reproducible tests
+    std::uniform_int_distribution<> dis(1, 50);
+
+    std::vector<int> random_data;
+    for (int i = 0; i < 200; ++i) {
+        random_data.push_back(dis(gen));
+    }
+
+    // Sort and manually compute expected result (elements that appear exactly once)
+    std::sort(random_data.begin(), random_data.end());
+    std::vector<int> expected;
+    for (auto it = random_data.begin(); it != random_data.end();) {
+        auto value = *it;
+        auto next = std::upper_bound(it, random_data.end(), value);
+        if (std::distance(it, next) == 1) {  // Appears exactly once
+            expected.push_back(value);
+        }
+        it = next;
+    }
+
+    test_remove_duplicates_behavior(random_data, expected);
+}
