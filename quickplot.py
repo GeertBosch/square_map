@@ -156,7 +156,7 @@ def create_quickplot(square_map_df, reference_df=None, output_file='plots/quickp
                   alpha=0.4, color='gray', label='O(1) reference', linewidth=1)
         
         # O(log n) reference line  
-        log_ref = min_time * np.log2(sizes) / np.log2(sizes[0])
+        log_ref = np.log2(sizes)
         plt.loglog(sizes, log_ref, '--', 
                   alpha=0.4, color='orange', label='O(log n) reference', linewidth=1)
     

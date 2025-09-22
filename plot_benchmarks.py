@@ -123,39 +123,39 @@ def create_plots(df, output_dir='plots'):
                               color=map_color, linestyle=op_style,
                               linewidth=2, markersize=6)
 
-            plt.xlabel('Container Size', fontsize=12)
-            plt.ylabel('Time per Item (nanoseconds)', fontsize=12)
-            plt.title(f'Performance Comparison - {generator}', fontsize=14)
-            plt.legend(fontsize=10)
-            plt.grid(True, alpha=0.3)
+        plt.xlabel('Container Size', fontsize=12)
+        plt.ylabel('Time per Item (nanoseconds)', fontsize=12)
+        plt.title(f'Performance Comparison - {generator}', fontsize=14)
+        plt.legend(fontsize=10)
+        plt.grid(True, alpha=0.3)
 
-            # Add some reference lines for common complexities
-            if len(gen_data) > 0:
-                sizes = np.array(sorted(gen_data['size'].unique()))
-                min_time = gen_data['time_per_item_ns'].min()
+        # Add some reference lines for common complexities
+        if len(gen_data) > 0:
+            sizes = np.array(sorted(gen_data['size'].unique()))
+            min_time = gen_data['time_per_item_ns'].min()
 
-                # O(1) reference line
-                plt.loglog(sizes, [min_time] * len(sizes), '--',
-                          alpha=0.5, color='gray', label='O(1) reference')
+            # O(1) reference line
+            plt.loglog(sizes, [min_time] * len(sizes), '--',
+                      alpha=0.5, color='gray', label='O(1) reference')
 
-                # O(log n) reference line
-                log_ref = min_time * np.log2(sizes) / np.log2(sizes[0])
-                plt.loglog(sizes, log_ref, '--',
-                          alpha=0.5, color='orange', label='O(log n) reference')
+            # O(log n) reference line
+            log_ref = np.log2(sizes)
+            plt.loglog(sizes, log_ref, '--',
+                      alpha=0.5, color='orange', label='O(log n) reference')
 
-                # O(n) reference line
-                linear_ref = min_time * sizes / sizes[0]
-                plt.loglog(sizes, linear_ref, '--',
-                          alpha=0.5, color='red', label='O(n) reference')
+            # O(n) reference line
+            linear_ref = min_time * sizes / sizes[0]
+            plt.loglog(sizes, linear_ref, '--',
+                      alpha=0.5, color='red', label='O(n) reference')
 
-            plt.legend(fontsize=10)
-            plt.tight_layout()
+        plt.legend(fontsize=10)
+        plt.tight_layout()
 
-            # Save the plot
-            filename = f"{output_dir}/combined_{generator}.png"
-            plt.savefig(filename, dpi=300, bbox_inches='tight')
-            print(f"Saved plot: {filename}")
-            plt.close()
+        # Save the plot
+        filename = f"{output_dir}/combined_{generator}.png"
+        plt.savefig(filename, dpi=300, bbox_inches='tight')
+        print(f"Saved plot: {filename}")
+        plt.close()
 
 def create_comparison_plot(df, output_dir='plots'):
     """Create a comprehensive comparison plot."""
