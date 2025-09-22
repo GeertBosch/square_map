@@ -765,19 +765,28 @@ protected:
         // Right range: {5, 15, 20, 30, 60} - keys 20,30 are duplicates
         // Invariants: split_key(5) < last_left(50) AND last_right(60) > last_left(50)
         Map::container_type container = {
-            {10, 100}, {20, 200}, {30, 300}, {40, 400}, {50, 500},  // Left range
-            {5, 50},   {15, 150}, {20, 250}, {30, 350}, {60, 600}   // Right range with duplicates
+            {1, 10},   {2, 20},   {3, 30},   {7, 70},   {9, 90},  // Extra elements to ensure split
+            {10, 100}, {20, 200}, {30, 300}, {40, 400}, {50, 500},  // Left range has 10 elems
+            {5, 50},   {60, 600}                                    // Right range with duplicates
         };
 
         // Create split map with split at index 5
-        map = inject_with_split_index<Map>(std::move(container), 5);
+        map = inject_with_split_index<Map>(std::move(container), 10);
+        EXPECT_EQ(map.size(), 12);  // 10 left + 2 right
+        map.erase(map.find(20));    // Erase key 20 from left range
+        map.erase(map.find(30));    // Erase key 30 from left range
 
-        // Manually set the erased count for duplicates (keys 20, 30 appear in both ranges)
-        // This is a test-only access to private members - using test accessor
-        map.test_erased_ref() = 2;  // keys 20 and 30 are duplicated (erased)
-
+        // Check size
+        EXPECT_EQ(map.size(), 10);  // 12 original - 2 erased = 10
+        check_valid(map);
         EXPECT_NE(map.split_point(), map.end())
             << "Failed to create split map with erased elements";
+
+        // Extract the container from a copy of the  map and verify that its size reflects erased
+        auto new_map = map;  // Copy
+        auto new_container = std::move(new_map).extract();
+        EXPECT_EQ(new_container.size(), 14)  // 12 original + 2 duplicates
+            << "Extracted container size should reflect erased elements";
     }
 };
 

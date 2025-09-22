@@ -396,10 +396,6 @@ public:
                                   : iterator::make(right_it, std::prev(c.end()));
     }
 
-    // Test-only accessors
-    size_type& test_erased_ref() { return _erased; }
-    const size_type& test_erased_ref() const { return _erased; }
-
 private:
     const square_map* _cthis() noexcept {
         return const_cast<const square_map*>(this);
