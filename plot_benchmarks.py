@@ -11,6 +11,60 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 import re
+from matplotlib.patches import Rectangle
+
+def add_log_scale_ruler(ax, position='upper right'):
+    """Add a logarithmic scale ruler to show time multiplication factors."""
+    # Get the current axis limits
+    xlim = ax.get_xlim()
+    ylim = ax.get_ylim()
+    
+    # Calculate ruler dimensions and position in log space
+    x_range = np.log10(xlim[1]) - np.log10(xlim[0])
+    y_range = np.log10(ylim[1]) - np.log10(ylim[0])
+    
+    # Ruler dimensions (as fraction of plot area)
+    ruler_width = 0.06 * x_range  # Width for ruler marks
+    
+    # Position the ruler
+    if position == 'upper right':
+        ruler_x = np.log10(xlim[1]) - ruler_width - 0.05 * x_range
+        ruler_y_base = np.log10(ylim[1]) - 0.25 * y_range
+    elif position == 'upper left':
+        ruler_x = np.log10(xlim[0]) + 0.05 * x_range
+        ruler_y_base = np.log10(ylim[1]) - 0.25 * y_range
+    else:  # lower right
+        ruler_x = np.log10(xlim[1]) - ruler_width - 0.05 * x_range
+        ruler_y_base = np.log10(ylim[0]) + 0.05 * y_range
+    
+    # Convert to linear coordinates
+    ruler_x_lin = 10**ruler_x
+    base_y = 10**ruler_y_base
+    ruler_width_lin = 10**(ruler_x + ruler_width) - ruler_x_lin
+    
+    # Draw vertical baseline (main ruler line) - no background box
+    baseline_x = ruler_x_lin + ruler_width_lin * 0.1
+    ax.plot([baseline_x, baseline_x], 
+           [base_y, base_y * 5], 'k-', linewidth=1.2, zorder=11)  # Only go to 5x
+    
+    # Draw horizontal scale marks with same small size - simplified set
+    factors = [1, 2, 5]  # Just the key reference points
+    
+    for factor in factors:
+        y_pos = base_y * factor
+        mark_end = baseline_x + ruler_width_lin * 0.13  # Much smaller tick marks
+        
+        # Horizontal tick mark extending right from baseline
+        ax.plot([baseline_x, mark_end], [y_pos, y_pos], 
+               'k-', linewidth=0.8, zorder=11)
+        
+        # Label to the right of the mark
+        ax.text(mark_end + ruler_width_lin * 0.15, y_pos, f'{factor}×', 
+               fontsize=7, va='center', ha='left', zorder=12)
+    
+    # Title to the right of the ruler
+    ax.text(ruler_x_lin + ruler_width_lin * 0.8, base_y * 3, 
+           'Time\nScale', fontsize=8, ha='left', va='center', weight='bold', zorder=12)
 
 def parse_benchmark_name(name):
     """Parse benchmark name to extract components."""
@@ -148,6 +202,9 @@ def create_plots(df, output_dir='plots'):
             plt.loglog(sizes, linear_ref, '--',
                       alpha=0.5, color='red', label='O(n) reference')
 
+        # Add logarithmic scale ruler
+        add_log_scale_ruler(plt.gca(), 'upper right')
+
         plt.legend(fontsize=10)
         plt.tight_layout()
 
@@ -204,6 +261,29 @@ def create_comparison_plot(df, output_dir='plots'):
                         plt.loglog(map_data['size'], map_data['time_per_item_ns'],
                                   marker='o', label=map_type, color=color, linestyle=style,
                                   linewidth=1.5, markersize=4)
+
+                # Add reference lines for common complexities
+                if len(op_data) > 0:
+                    sizes = np.array(sorted(op_data['size'].unique()))
+                    min_time = op_data['time_per_item_ns'].min()
+
+                    # O(1) reference line
+                    plt.loglog(sizes, [min_time] * len(sizes), '--',
+                              alpha=0.3, color='gray', linewidth=0.8)
+
+                    # O(log n) reference line
+                    log_ref = np.log2(sizes)
+                    plt.loglog(sizes, log_ref, '--',
+                              alpha=0.3, color='orange', linewidth=0.8)
+
+                    # O(n) reference line
+                    linear_ref = min_time * sizes / sizes[0]
+                    plt.loglog(sizes, linear_ref, '--',
+                              alpha=0.3, color='red', linewidth=0.8)
+
+                # Add scale ruler to first subplot only (to avoid clutter)
+                if i == 0 and j == 0:
+                    add_log_scale_ruler(plt.gca(), 'lower right')
 
                 plt.xlabel('Size' if i == len(operations) - 1 else '')
                 plt.ylabel('Time per Item (ns)' if j == 0 else '')
