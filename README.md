@@ -160,4 +160,59 @@ exhausted. In both cases $m_{j}<m_{k}$ is equivalent to $s_{j, 0}<s_{k, 0}$. Oth
 iterators are valid and $m_{j}<m_{k} \Leftrightarrow * m_{j}<* m_{k}$. As optimization consider
 $m_{j}=m_{k} \Leftrightarrow m_{j, 0}=m_{k, 0}$.
 
-</div>
+# Experimental Results
+The results in this section are for one specific instantiation of the map, as well as a specific set
+of test scenarios and problem sizes that cannot be generalized. Whether the square map performs well
+in your application depends on many factors, including the following:
+* **caches**: the efficiency of this data structure depends on memory locality and the efficiency of
+  caches to make random access of nearby items much cheaper than that of farther away items. If
+  value sizes are such that caches are not effective, performance may be significantly worse than
+  for other data structures, including `std::map`.
+* **move costs**: this data structure depends on consecutive in-cache moves to be fast
+* **value size**: the current implementation stores keys and values as pairs. If values are
+  significantly larger than keys this will result in higher costs for comparisons and possibly lower
+  performance.
+
+# Performance Comparison
+![Performance Comparison](plots/quickplot.png) While this graph is dense, it clearly illustrates the
+most consequential performance properties of the square map. The vertical axis uses nanoseconds as
+units, rather than move or comparison operations. This reflects the practical importance of time and
+the acknowledgement that not all comparisons and moves are equal cost. The square map data structure
+illustrates how a memory model where random access is O(1) regardless of the size of the data set
+accessed is not realistic.
+
+## Asymptotic Complexity
+Comparing actual timing results with the reference plots using log-log scale, we can derive the
+following:
+* Random flat map inserts have $O(n)$ complexity both in theory and in practice. This is bad.
+* Random flat map lookups have $O(\log n)$ complexity until about 32K elements and then gets much
+  more expensive. This seems to be an effect of exceeding L2 cache size, where memory latencies
+  start to dominate compute. For larger sizes the flat map and square map get closer, as the
+  overhead of the square map with two sorted ranges compares to a flat map is mostly computational.
+* Both flat map and square map have $O(1)$ complexity for range iteration, remarkably constant even
+  for large $n$.
+* Algorithic complexity of point lookups seems similar for all three data structures. For smallish
+  maps below 1K elements, `std::map` is best, while above 10K elements the square map and flat map
+  take over due to memory locality, but there's never more than a 4x difference regardless of $n$. 
+
+### Inserts
+There are three observations: two expected, and one remarkable. The flat map has a complexity that
+exactly follows the $O(n)$ reference. The resulting build time of a map of $n$ elements is
+proportional to $n^2$, and if ever you need a reminder of the awfullness of $n$-squared algorithms,
+this is it. The reason the graphs don't show results beyond $10^5$ for the flat map is the amount of
+time it added to producing the plot data. The $10^5$ point of the flat map is already 20x more
+costly to run than the $10^6$ point of the other maps. This shows why you can't really afford any
+$n$-squared code in practice: the costs are prohibitive even when $n$ gets just in the millions.
+
+The other expected observation is for range iteration. Both the flat map and the squared map have
+essentially constant $O(1)$ performance for iteration, while iteraton over a `std::map` shows costs
+clearly exceeding $O(log n)$.
+
+Still, one could expect the $\sqrt(n)$ for square maps to become similarly bad, as its complexity in
+the graph would be a straight line, just as $O(n)$, but with a slope that is half. The experimental
+results however show very similar insert behavior for both the `std::map` and the square map up to 1
+million elements. The cost for inserting into a square map never exceeds that of inserting into a
+`std::map` and Even the slope of the graph between the last two points is the same. This clearly
+illustrates how not all memory accesses are equal, and designing algorithms to respect memory
+locality can yield asymptotic benefits on the time scale that differ from those on the number of
+operations. 
