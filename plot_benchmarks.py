@@ -90,7 +90,7 @@ def parse_benchmark_name(name):
     return None, None, None, None
 
 def load_benchmark_data(json_file):
-    """Load and parse benchmark JSON data."""
+    """Load and parse Google Benchmark JSON results."""
     with open(json_file, 'r') as f:
         data = json.load(f)
 
@@ -116,9 +116,55 @@ def load_benchmark_data(json_file):
                 'items_per_second': benchmark.get('items_per_second', 0)
             })
 
-    return pd.DataFrame(results)
+    # Also return the context information for system details
+    context = data.get('context', {})
+    return pd.DataFrame(results), context
 
-def create_plots(df, output_dir='plots'):
+def format_system_info(context):
+    """Format system information for use as plot subtitle."""
+    if not context:
+        return ""
+    
+    # Extract CPU information
+    num_cpus = context.get('num_cpus', 0)
+    mhz_per_cpu = context.get('mhz_per_cpu', 0)
+    cpu_scaling_enabled = context.get('cpu_scaling_enabled', False)
+    
+    # Format CPU speed
+    if cpu_scaling_enabled or mhz_per_cpu < 1000 or mhz_per_cpu > 10000:
+        cpu_speed_str = "???"
+    else:
+        ghz = mhz_per_cpu / 1000.0
+        cpu_speed_str = f"{ghz:.1f} GHz"
+    
+    # Extract cache information
+    caches = context.get('caches', [])
+    l1d_size = None
+    l2_size = None
+    
+    for cache in caches:
+        if cache.get('type') == 'Data' and cache.get('level') == 1:
+            l1d_size = cache.get('size')
+        elif cache.get('type') == 'Unified' and cache.get('level') == 2:
+            l2_size = cache.get('size')
+    
+    # Format cache sizes
+    def format_cache_size(size_bytes):
+        if size_bytes is None:
+            return "?"
+        if size_bytes < 1024:
+            return f"{size_bytes} B"
+        elif size_bytes < 1024 * 1024:
+            return f"{size_bytes // 1024} KB"
+        else:
+            return f"{size_bytes // (1024 * 1024)} MB"
+    
+    l1d_str = format_cache_size(l1d_size)
+    l2_str = format_cache_size(l2_size)
+    
+    return f"{num_cpus} × {cpu_speed_str} CPU  -  {l1d_str} L1D  -  {l2_str} L2"
+
+def create_plots(df, context, output_dir='plots'):
     """Create log-log plots for benchmark results."""
     Path(output_dir).mkdir(exist_ok=True)
 
@@ -180,6 +226,11 @@ def create_plots(df, output_dir='plots'):
         plt.xlabel('Container Size', fontsize=12)
         plt.ylabel('Time per Item (nanoseconds)', fontsize=12)
         plt.title(f'Performance Comparison - {generator}', fontsize=14)
+        # Add system info inside the axes, at the top
+        system_info = format_system_info(context)
+        if system_info:
+            plt.gca().text(0.99, 0.98, system_info, fontsize=10, color='dimgray',
+                          ha='right', va='top', transform=plt.gca().transAxes, bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', boxstyle='round,pad=0.2'))
         plt.legend(fontsize=10)
         plt.grid(True, alpha=0.3)
 
@@ -214,7 +265,7 @@ def create_plots(df, output_dir='plots'):
         print(f"Saved plot: {filename}")
         plt.close()
 
-def create_comparison_plot(df, output_dir='plots'):
+def create_comparison_plot(df, context, output_dir='plots'):
     """Create a comprehensive comparison plot."""
     # Filter out rows where time_per_item_ns is None
     df = df[df['time_per_item_ns'].notna()]
@@ -246,56 +297,51 @@ def create_comparison_plot(df, output_dir='plots'):
 
     for i, operation in enumerate(operations):
         for j, generator in enumerate(generators):
-            plt.subplot(len(operations), len(generators), i * len(generators) + j + 1)
-
+            ax = plt.subplot(len(operations), len(generators), i * len(generators) + j + 1)
             op_data = df[(df['operation'] == operation) & (df['generator'] == generator)]
-
             if len(op_data) > 0:
                 map_types = op_data['map_type'].unique()
-
                 for map_type in map_types:
                     map_data = op_data[op_data['map_type'] == map_type].sort_values('size')
                     if len(map_data) > 0:
                         color = map_type_colors.get(map_type, '#8c564b')
                         style = operation_styles.get(operation, '-')
-                        plt.loglog(map_data['size'], map_data['time_per_item_ns'],
+                        ax.loglog(map_data['size'], map_data['time_per_item_ns'],
                                   marker='o', label=map_type, color=color, linestyle=style,
                                   linewidth=1.5, markersize=4)
-
                 # Add reference lines for common complexities
-                if len(op_data) > 0:
-                    sizes = np.array(sorted(op_data['size'].unique()))
-                    min_time = op_data['time_per_item_ns'].min()
-
-                    # O(1) reference line
-                    plt.loglog(sizes, [min_time] * len(sizes), '--',
-                              alpha=0.3, color='gray', linewidth=0.8)
-
-                    # O(log n) reference line
-                    log_ref = np.log2(sizes)
-                    plt.loglog(sizes, log_ref, '--',
-                              alpha=0.3, color='orange', linewidth=0.8)
-
-                    # O(n) reference line
-                    linear_ref = min_time * sizes / sizes[0]
-                    plt.loglog(sizes, linear_ref, '--',
-                              alpha=0.3, color='red', linewidth=0.8)
-
-                # Add scale ruler to first subplot only (to avoid clutter)
-                if i == 0 and j == 0:
-                    add_log_scale_ruler(plt.gca(), 'lower right')
-
-                plt.xlabel('Size' if i == len(operations) - 1 else '')
-                plt.ylabel('Time per Item (ns)' if j == 0 else '')
-                plt.title(f'{operation} - {generator}', fontsize=10)
-                if i == 0 and j == 0:
-                    plt.legend(fontsize=8, bbox_to_anchor=(1.05, 1), loc='upper left')
-                plt.grid(True, alpha=0.3)
+                sizes = np.array(sorted(op_data['size'].unique()))
+                min_time = op_data['time_per_item_ns'].min()
+                ax.loglog(sizes, [min_time] * len(sizes), '--',
+                          alpha=0.3, color='gray', linewidth=0.8)
+                log_ref = np.log2(sizes)
+                ax.loglog(sizes, log_ref, '--',
+                          alpha=0.3, color='orange', linewidth=0.8)
+                linear_ref = min_time * sizes / sizes[0]
+                ax.loglog(sizes, linear_ref, '--',
+                          alpha=0.3, color='red', linewidth=0.8)
+            # Add scale ruler to first subplot only (to avoid clutter)
+            if i == 0 and j == 0:
+                add_log_scale_ruler(ax, 'lower right')
+            ax.set_xlabel('Size' if i == len(operations) - 1 else '')
+            ax.set_ylabel('Time per Item (ns)' if j == 0 else '')
+            ax.set_title(f'{operation} - {generator}', fontsize=10)
+            if i == 0 and j == 0:
+                ax.legend(fontsize=8, bbox_to_anchor=(1.05, 1), loc='upper left')
+            ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
+    # Add system info inside each subplot, at the top
+    system_info = format_system_info(context)
+    if system_info:
+        for ax in plt.gcf().get_axes():
+            ax.text(0.99, 0.98, system_info, fontsize=10, color='dimgray',
+                    ha='right', va='top', transform=ax.transAxes, bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', boxstyle='round,pad=0.2'))
+    plt.gcf().suptitle('Benchmark Comparison', fontsize=14)
     filename = f"{output_dir}/benchmark_comparison.png"
     plt.savefig(filename, dpi=300, bbox_inches='tight')
     print(f"Saved comprehensive comparison: {filename}")
+    plt.close()
     plt.close()
 
 def main():
@@ -310,7 +356,7 @@ def main():
         sys.exit(1)
 
     print(f"Loading benchmark data from {json_file}...")
-    df = load_benchmark_data(json_file)
+    df, context = load_benchmark_data(json_file)
 
     if df.empty:
         print("No valid benchmark data found!")
@@ -322,8 +368,8 @@ def main():
     print(f"Generators: {', '.join(df['generator'].unique())}")
 
     print("Creating plots...")
-    create_plots(df)
-    create_comparison_plot(df)
+    create_plots(df, context)
+    create_comparison_plot(df, context)
 
     print("Done! Check the 'plots' directory for generated graphs.")
 

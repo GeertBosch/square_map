@@ -184,13 +184,23 @@ accessed is not realistic.
 ## Asymptotic Complexity
 Comparing actual timing results with the reference plots using log-log scale, we can derive the
 following:
-* Random flat map inserts have $O(n)$ complexity both in theory and in practice. This is bad.
-* Random flat map lookups have $O(\log n)$ complexity until about 32K elements and then gets much
-  more expensive. This seems to be an effect of exceeding L2 cache size, where memory latencies
-  start to dominate compute. For larger sizes the flat map and square map get closer, as the
-  overhead of the square map with two sorted ranges compares to a flat map is mostly computational.
+* Random flat map inserts have $O(n)$ complexity both in theory and in practice. This is unusable.
+  However, while the square map has worse performance according to theory with uniform memory access
+  costs, it turns out that for this test scenario the square map is uniformly better. Even at the
+  point where the square map and `std::map` converge, the derivatives are close. So, while
+  `std::map` may still outperform in many cases in the millions to billions territory, 
+* Random flat map lookups have $O(\log n)$ complexity until about 4K elements (32 KB memory in the
+  map) and then gets much more expensive. This seems to be an effect of exceeding L1 cache
+  size, where memory latencies start to dominate compute. For larger sizes the flat map and square
+  map get closer, as the lookups in the right range are much cheaper than those in the larger left
+  range. For the `std::map` random lookup starts missing the L1 cache at just 512 elements, as each
+  element is a dynamically allocated tree node that may be on a different cache line. For 512
+  elements at a 64-byte cache line each, this also adds up to 32 KB of L1. Still, all three maps
+  stay within a relatively narrow band of up to 4x or so of time per operation.
 * Both flat map and square map have $O(1)$ complexity for range iteration, remarkably constant even
-  for large $n$.
+  for large $n$. However, range iteration on a `std::map` becomes close to random lookup performance
+  of the square map for higher $n$. Again, the flat map is omitted here, as it takes too long to
+  insert the data. It's still surprising how bad the `std::map` gets compared to the flat
 * Algorithic complexity of point lookups seems similar for all three data structures. For smallish
   maps below 1K elements, `std::map` is best, while above 10K elements the square map and flat map
   take over due to memory locality, but there's never more than a 4x difference regardless of $n$. 

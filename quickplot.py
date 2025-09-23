@@ -1,3 +1,35 @@
+def format_system_info(context):
+    """Format system information for use as plot annotation."""
+    if not context:
+        return ""
+    num_cpus = context.get('num_cpus', 0)
+    mhz_per_cpu = context.get('mhz_per_cpu', 0)
+    cpu_scaling_enabled = context.get('cpu_scaling_enabled', False)
+    if cpu_scaling_enabled or mhz_per_cpu < 1000 or mhz_per_cpu > 10000:
+        cpu_speed_str = "???"
+    else:
+        ghz = mhz_per_cpu / 1000.0
+        cpu_speed_str = f"{ghz:.1f} GHz"
+    caches = context.get('caches', [])
+    l1d_size = None
+    l2_size = None
+    for cache in caches:
+        if cache.get('type') == 'Data' and cache.get('level') == 1:
+            l1d_size = cache.get('size')
+        elif cache.get('type') == 'Unified' and cache.get('level') == 2:
+            l2_size = cache.get('size')
+    def format_cache_size(size_bytes):
+        if size_bytes is None:
+            return "?"
+        if size_bytes < 1024:
+            return f"{size_bytes} B"
+        elif size_bytes < 1024 * 1024:
+            return f"{size_bytes // 1024} KB"
+        else:
+            return f"{size_bytes // (1024 * 1024)} MB"
+    l1d_str = format_cache_size(l1d_size)
+    l2_str = format_cache_size(l2_size)
+    return f"{num_cpus} × {cpu_speed_str} CPU  -  {l1d_str} L1D  -  {l2_str} L2"
 #!/usr/bin/env python3
 """
 Script to create a quick plot from square_map benchmark results with reference implementations.
@@ -193,6 +225,10 @@ def create_quickplot(square_map_df, reference_df=None, output_file='plots/quickp
     plt.xlabel('Container Size', fontsize=12)
     plt.ylabel('Time per Item (nanoseconds)', fontsize=12)
     plt.title('Map Performance Comparison - Random Key Order', fontsize=14)
+    # Add system info annotation inside the axes at the top
+    if hasattr(create_quickplot, 'system_info') and create_quickplot.system_info:
+        plt.gca().text(0.99, 0.98, create_quickplot.system_info, fontsize=10, color='dimgray',
+                      ha='right', va='top', transform=plt.gca().transAxes, bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', boxstyle='round,pad=0.2'))
     plt.legend(fontsize=9, loc='upper left')
     plt.grid(True, alpha=0.3)
     
@@ -246,16 +282,19 @@ def main():
         print(f"Error: File {square_map_file} not found")
         sys.exit(1)
     
+    # Load context from the main JSON file
+    with open(square_map_file, 'r') as f:
+        data = json.load(f)
+    context = data.get('context', {})
     square_map_df = load_benchmark_data(square_map_file)
-    
     if square_map_df.empty:
         print("No valid benchmark data found in square_map results!")
         sys.exit(1)
-    
     reference_df = None
     if reference_file and Path(reference_file).exists():
         reference_df = load_benchmark_data(reference_file)
-    
+    # Attach system info to the plotting function for access
+    create_quickplot.system_info = format_system_info(context)
     if create_quickplot(square_map_df, reference_df):
         print("plots/quickplot.png")
     else:
