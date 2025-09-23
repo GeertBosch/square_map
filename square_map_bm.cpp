@@ -24,7 +24,7 @@ constexpr bool kDebug = 0;
 
 namespace {
 
-constexpr uint32_t kMinContainerSize = 20;
+constexpr uint32_t kMinContainerSize = 8;
 constexpr uint32_t kMaxContainerSize = kDebug ? 100'000 : 1'000'000;
 constexpr uint32_t kMaxSlowContainerSize = kMaxContainerSize / 10;  // Smaller size for O(n) ops
 
