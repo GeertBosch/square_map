@@ -139,7 +139,7 @@ def load_benchmark_data(json_file):
     
     return pd.DataFrame(results)
 
-def create_quickplot(square_map_df, reference_df=None, output_file='plots/quickplot.png'):
+def create_quickplot(square_map_df, reference_df=None, output_file='plots/quickplot.svg'):
     """Create a single plot showing all operations with optional reference implementations."""
     # Filter out rows where time_per_item_ns is None
     square_map_df = square_map_df[square_map_df['time_per_item_ns'].notna()]
@@ -296,7 +296,7 @@ def main():
     # Attach system info to the plotting function for access
     create_quickplot.system_info = format_system_info(context)
     if create_quickplot(square_map_df, reference_df):
-        print("plots/quickplot.png")
+        print("plots/quickplot.svg")
     else:
         sys.exit(1)
 

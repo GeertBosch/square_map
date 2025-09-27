@@ -5,5 +5,5 @@ build
 build_release
 build_debug
 plots/*
-!plots/quickplot.png
+!plots/quickplot.svg
 compile_commands.json

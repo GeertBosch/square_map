@@ -52,7 +52,7 @@ clean:
 	@rm -rf $(BUILD_DIR)
 	@rm -rf $(DEBUG_BUILD_DIR)
 	@echo "Cleaning plot files..."
-	@rm -rf plots/*.png
+	@rm -rf plots/*.svg
 	@echo "Cleaning test result files..."
 	@rm -f test_*.json
 	@echo "Cleaning benchmark result files..."

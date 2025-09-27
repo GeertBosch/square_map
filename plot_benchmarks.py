@@ -260,7 +260,7 @@ def create_plots(df, context, output_dir='plots'):
         plt.tight_layout()
 
         # Save the plot
-        filename = f"{output_dir}/combined_{generator}.png"
+        filename = f"{output_dir}/combined_{generator}.svg"
         plt.savefig(filename, dpi=300, bbox_inches='tight')
         print(f"Saved plot: {filename}")
         plt.close()
@@ -338,7 +338,7 @@ def create_comparison_plot(df, context, output_dir='plots'):
             ax.text(0.99, 0.98, system_info, fontsize=10, color='dimgray',
                     ha='right', va='top', transform=ax.transAxes, bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', boxstyle='round,pad=0.2'))
     plt.gcf().suptitle('Benchmark Comparison', fontsize=14)
-    filename = f"{output_dir}/benchmark_comparison.png"
+    filename = f"{output_dir}/benchmark_comparison.svg"
     plt.savefig(filename, dpi=300, bbox_inches='tight')
     print(f"Saved comprehensive comparison: {filename}")
     plt.close()

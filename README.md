@@ -174,7 +174,7 @@ in your application depends on many factors, including the following:
   performance.
 
 # Performance Comparison
-![Performance Comparison](plots/quickplot.png) While this graph is dense, it clearly illustrates the
+![Performance Comparison](plots/quickplot.svg) While this graph is dense, it clearly illustrates the
 most consequential performance properties of the square map. The vertical axis uses nanoseconds as
 units, rather than move or comparison operations. This reflects the practical importance of time and
 the acknowledgement that not all comparisons and moves are equal cost. The square map data structure
