@@ -7,6 +7,9 @@
 BUILD_DIR := build
 DEBUG_BUILD_DIR := build_debug
 
+# Python command that disables .pyc file generation
+PYTHON_NOPYC = PYTHONDONTWRITEBYTECODE=1 python3
+
 # Default target: ensure build directory exists and run make there
 all: $(BUILD_DIR)/Makefile
 	@$(MAKE) -C $(BUILD_DIR)
@@ -94,7 +97,7 @@ $(BUILD_DIR)/quickbench_reference.json: square_map_bm.cpp
 # Generate quick plot from quickbench results
 quickplot: $(BUILD_DIR)/quickbench_results.json $(BUILD_DIR)/quickbench_reference.json
 	@if [ -f $(BUILD_DIR)/quickbench_results.json ] && [ -f $(BUILD_DIR)/quickbench_reference.json ]; then \
-		source .venv/bin/activate && PLOT_FILE=$$(python3 quickplot.py $(BUILD_DIR)/quickbench_results.json $(BUILD_DIR)/quickbench_reference.json); \
+	source .venv/bin/activate && PLOT_FILE=$$($(PYTHON_NOPYC) quickplot.py $(BUILD_DIR)/quickbench_results.json $(BUILD_DIR)/quickbench_reference.json); \
 		if [ -n "$$PLOT_FILE" ]; then \
 			if command -v timg >/dev/null 2>&1 && ([ "$$TERM_PROGRAM" = "iTerm.app" ] || [ "$$TERM_PROGRAM" = "vscode" ]); then \
 				echo "Displaying plot in terminal..."; \
@@ -110,7 +113,7 @@ quickplot: $(BUILD_DIR)/quickbench_results.json $(BUILD_DIR)/quickbench_referenc
 # Generate plots from benchmark results
 plots: benchmark
 	@if [ -f $(BUILD_DIR)/benchmark_results.json ]; then \
-		source .venv/bin/activate && python3 plot_benchmarks.py $(BUILD_DIR)/benchmark_results.json; \
+	source .venv/bin/activate && $(PYTHON_NOPYC) plot_benchmarks.py $(BUILD_DIR)/benchmark_results.json; \
 	else \
 		echo "No benchmark results found. Run 'make benchmark' first."; \
 	fi
