@@ -1,3 +1,4 @@
+
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 #include <algorithm>
@@ -48,7 +49,6 @@ void check_valid(Map m) {
     if (m.empty()) {
         EXPECT_EQ(m.size(), 0);
         EXPECT_EQ(m.begin(), m.end());
-        EXPECT_EQ(m.split_point(), m.end());
         return;
     }
 
@@ -56,8 +56,15 @@ void check_valid(Map m) {
     EXPECT_GT(m.size(), 0);
     EXPECT_NE(m.begin(), m.end());
 
+    // Find the split point in the container by finding adjacent elements where the second is
+    // strictly smaller than the first. The split point may be erased.
+    auto split_it = std::next(container.begin());
+    while (split_it != container.end() && std::prev(split_it)->first < split_it->first) ++split_it;
+
     // Check properties of a map with a single range
-    if (m.split_point() == m.end()) {
+    if (split_it == container.end()) split_it = container.begin();
+
+    if (split_it == container.begin()) {
         // The map is merged into one range, so it should be a flat map.
         EXPECT_TRUE(is_strictly_sorted(container.begin(), container.end()));
         EXPECT_EQ(m.size(), container.size());
@@ -67,16 +74,13 @@ void check_valid(Map m) {
     // The map is split into two ranges. Elements that exist in both the left and the right
     // range are considered erased, so the split point in the container is not necessarily
     // container.begin + std::distance(m.begin, m.split_point). Find the container split point.
-    auto split_it = container.begin();
-    EXPECT_NE(m.split_point(), m.end());
-    auto split_key = m.split_point()->first;
-    while (split_it != container.end() && split_it->first != split_key) ++split_it;
 
     // 1. Check that the two ranges are strictly sorted
     EXPECT_TRUE(is_strictly_sorted(container.begin(), split_it));
     EXPECT_TRUE(is_strictly_sorted(split_it, container.end()));
 
     // 2. The first key of the right range must be less than the last key of the left range.
+    auto split_key = split_it->first;
     EXPECT_LT(split_key, (std::prev(split_it))->first);
 
     // 3. The last key of the right range is larger than the last key of the left range.
@@ -668,7 +672,7 @@ TEST(DuplicateRemoval, EraseFromLeftThenTriggerMerge) {
     Map map = inject_with_split_index<Map>(std::move(container), 5);
 
     // Debug: print split_point status
-    if (map.split_point() == map.end()) {
+    if (!map.split_point()) {
         std::cout << "DEBUG: Map has no split (flat map)" << std::endl;
     } else {
         std::cout << "DEBUG: Map has split at key " << map.split_point()->first << std::endl;
@@ -676,7 +680,7 @@ TEST(DuplicateRemoval, EraseFromLeftThenTriggerMerge) {
 
     check_valid(map);
 
-    if (map.split_point() == map.end()) {
+    if (!map.split_point()) {
         GTEST_SKIP() << "Could not create split condition";
         return;
     }
@@ -698,7 +702,7 @@ TEST(DuplicateRemoval, EraseFromLeftThenTriggerMerge) {
 
         // After merge, key should still not exist (was erased)
         EXPECT_EQ(map.find(10), map.end()) << "Key should not exist after merge (was erased)";
-        EXPECT_EQ(map.split_point(), map.end()) << "Should be merged";
+        EXPECT_EQ(map.split_point(), nullptr) << "Should be merged";
     } else {
         GTEST_SKIP() << "Test key not available";
     }
@@ -753,7 +757,7 @@ protected:
         // Create split map with split at index 5 (between ranges)
         map = inject_with_split_index<Map>(std::move(container), 5);
 
-        EXPECT_NE(map.split_point(), map.end())
+        EXPECT_NE(map.split_point(), nullptr)
             << "Failed to create split map - inject method should guarantee split";
         check_valid(map);
     }
@@ -779,8 +783,7 @@ protected:
         // Check size
         EXPECT_EQ(map.size(), 10);  // 12 original - 2 erased = 10
         check_valid(map);
-        EXPECT_NE(map.split_point(), map.end())
-            << "Failed to create split map with erased elements";
+        EXPECT_NE(map.split_point(), nullptr) << "Failed to create split map with erased elements";
 
         // Extract the container from a copy of the  map and verify that its size reflects erased
         auto new_map = map;  // Copy
@@ -797,7 +800,7 @@ TEST_F(MergeMethod, MergeEmptyMap) {
     map.merge();
 
     EXPECT_TRUE(map.empty());
-    EXPECT_EQ(map.split_point(), map.end());
+    EXPECT_EQ(map.split_point(), nullptr);
     check_valid(map);
 }
 
@@ -807,13 +810,13 @@ TEST_F(MergeMethod, MergeSingleRangeMap) {
         map[i] = i * 10;
     }
 
-    EXPECT_EQ(map.split_point(), map.end());  // Should be flat already
+    EXPECT_EQ(map.split_point(), nullptr);  // Should be flat already
     auto original_size = map.size();
 
     map.merge();
 
     EXPECT_EQ(map.size(), original_size);
-    EXPECT_EQ(map.split_point(), map.end());
+    EXPECT_EQ(map.split_point(), nullptr);
     EXPECT_TRUE(is_strictly_sorted(map.begin(), map.end()));
     check_valid(map);
 }
@@ -822,13 +825,13 @@ TEST_F(MergeMethod, MergeSplitRangesNoErased) {
     // Test merge on split map with no erased elements
     create_split_map();
 
-    EXPECT_NE(map.split_point(), map.end());  // Should be split
+    EXPECT_NE(map.split_point(), nullptr);  // Should be split
     auto original_size = map.size();
 
     map.merge();
 
     EXPECT_EQ(map.size(), original_size);     // Size should be preserved
-    EXPECT_EQ(map.split_point(), map.end());  // Should be flat after merge
+    EXPECT_EQ(map.split_point(), nullptr);    // Should be flat after merge
     EXPECT_TRUE(is_strictly_sorted(map.begin(), map.end()));
     check_valid(map);
 
@@ -847,7 +850,7 @@ TEST_F(MergeMethod, MergeSplitRangesWithErased) {
     create_erased_elements();
 
     // Only proceed if we have a split
-    if (map.split_point() == map.end()) {
+    if (!map.split_point()) {
         GTEST_FAIL() << "Could not create split condition with erased elements";
         return;
     }
@@ -865,7 +868,7 @@ TEST_F(MergeMethod, MergeSplitRangesWithErased) {
     map.merge();
 
     EXPECT_EQ(map.size(), original_size);     // Size should be preserved
-    EXPECT_EQ(map.split_point(), map.end());  // Should be flat after merge
+    EXPECT_EQ(map.split_point(), nullptr);    // Should be flat after merge
     check_valid(map);
 
     // Verify erased keys are still missing
@@ -890,7 +893,7 @@ TEST_F(MergeMethod, MergeStability) {
     // Create a split map with no erased elements using inject
     create_split_map();
 
-    if (map.split_point() == map.end()) {
+    if (!map.split_point()) {
         GTEST_SKIP() << "Could not create split condition for stability test";
         return;
     }
@@ -911,7 +914,7 @@ TEST_F(MergeMethod, MergeStability) {
 
     EXPECT_EQ(before_merge, after_merge)
         << "Merge should preserve element order and values for non-erased elements";
-    EXPECT_EQ(map.split_point(), map.end());
+    EXPECT_EQ(map.split_point(), nullptr);
     check_valid(map);
 }
 
@@ -920,7 +923,7 @@ TEST_F(MergeMethod, MergeMultipleTimes) {
     create_erased_elements();
 
     // Only proceed if we have appropriate conditions
-    if (map.split_point() == map.end()) {
+    if (!map.split_point()) {
         GTEST_SKIP() << "Could not create split condition for multiple merge test";
         return;
     }
@@ -929,19 +932,19 @@ TEST_F(MergeMethod, MergeMultipleTimes) {
 
     // First merge
     map.merge();
-    EXPECT_EQ(map.split_point(), map.end());
+    EXPECT_EQ(map.split_point(), nullptr);
     check_valid(map);
     auto size_after_first = map.size();
 
     // Second merge (should be no-op)
     map.merge();
-    EXPECT_EQ(map.split_point(), map.end());
+    EXPECT_EQ(map.split_point(), nullptr);
     EXPECT_EQ(map.size(), size_after_first);
     check_valid(map);
 
     // Third merge (should still be no-op)
     map.merge();
-    EXPECT_EQ(map.split_point(), map.end());
+    EXPECT_EQ(map.split_point(), nullptr);
     EXPECT_EQ(map.size(), size_after_first);
     check_valid(map);
 
@@ -965,7 +968,7 @@ TEST_F(MergeMethod, MergeAfterOperations) {
     // Merge should consolidate everything
     map.merge();
 
-    EXPECT_EQ(map.split_point(), map.end());
+    EXPECT_EQ(map.split_point(), nullptr);
     EXPECT_TRUE(is_strictly_sorted(map.begin(), map.end()));
     check_valid(map);
 
@@ -992,7 +995,7 @@ TEST_F(InjectMethod, InjectEmptyContainer) {
 
     EXPECT_TRUE(map.empty());
     EXPECT_EQ(map.size(), 0);
-    EXPECT_EQ(map.split_point(), map.end());
+    EXPECT_EQ(map.split_point(), nullptr);
     check_valid(map);
 }
 
@@ -1003,7 +1006,7 @@ TEST_F(InjectMethod, InjectFlatContainer) {
     auto map = inject_with_split_index<Map>(std::move(container), 0);
 
     EXPECT_EQ(map.size(), 5);
-    EXPECT_EQ(map.split_point(), map.end());  // No split
+    EXPECT_EQ(map.split_point(), nullptr);  // No split
     EXPECT_TRUE(is_strictly_sorted(map.begin(), map.end()));
     check_valid(map);
 
@@ -1021,7 +1024,7 @@ TEST_F(InjectMethod, InjectSplitContainer) {
     auto map = inject_with_split_index<Map>(std::move(container), 3);
 
     EXPECT_EQ(map.size(), 6);
-    EXPECT_NE(map.split_point(), map.end());  // Should have split
+    EXPECT_NE(map.split_point(), nullptr);    // Should have split
     EXPECT_EQ(map.split_point()->first, 2);   // First element of right range
     check_valid(map);
 
@@ -1048,7 +1051,7 @@ TEST_F(InjectMethod, InjectWithIterator) {
     map.replace(std::move(container), split_it);
 
     EXPECT_EQ(map.size(), 5);
-    EXPECT_NE(map.split_point(), map.end());
+    EXPECT_NE(map.split_point(), nullptr);
     EXPECT_EQ(map.split_point()->first, 20);  // First element of right range
 
     // Verify elements are accessible through the map interface
@@ -1064,7 +1067,7 @@ TEST_F(InjectMethod, InjectConstContainer) {
     auto map = inject_with_split_index<Map>(container, 0);  // Use const version
 
     EXPECT_EQ(map.size(), 3);
-    EXPECT_EQ(map.split_point(), map.end());
+    EXPECT_EQ(map.split_point(), nullptr);
     check_valid(map);
 
     for (uint32_t i = 1; i <= 3; ++i) {
@@ -1082,12 +1085,12 @@ TEST_F(InjectMethod, InjectExtractRoundTrip) {
     // Force a split by adding elements in reverse order
     for (uint32_t i = 20; i > 15; --i) {
         original[i] = i * 10;
-        if (original.split_point() != original.end()) break;
+        if (!original.split_point()) break;
     }
 
     check_valid(original);
     auto original_size = original.size();
-    auto has_split = original.split_point() != original.end();
+    auto has_split = !!original.split_point();
 
     // Extract and inject
     auto container = std::move(original).extract();
@@ -1112,7 +1115,7 @@ TEST_F(InjectMethod, InjectInvalidSplitIndex) {
 
     EXPECT_EQ(map.size(), 3);
     // With split_index >= container.size(), should be treated as flat
-    EXPECT_EQ(map.split_point(), map.end());  // Should be flat
+    EXPECT_EQ(map.split_point(), nullptr);  // Should be flat
 
     // Verify basic functionality works
     EXPECT_EQ(map[1], 10);
@@ -1141,7 +1144,7 @@ TEST_F(ReplaceMethod, ReplaceEmptyContainer) {
 
     EXPECT_TRUE(original.empty());
     EXPECT_EQ(original.size(), 0);
-    EXPECT_EQ(original.split_point(), original.end());  // Should be flat
+    EXPECT_EQ(original.split_point(), nullptr);  // Should be flat
     check_valid(original);
 }
 
@@ -1155,7 +1158,7 @@ TEST_F(ReplaceMethod, ReplaceWithSortedContainer) {
     original.replace(std::move(new_container));
 
     EXPECT_EQ(original.size(), 4);
-    EXPECT_EQ(original.split_point(), original.end());  // Should be flat after replace
+    EXPECT_EQ(original.split_point(), nullptr);  // Should be flat after replace
     check_valid(original);
 
     // Verify all elements are accessible
@@ -1192,7 +1195,7 @@ TEST_F(ReplaceMethod, ReplaceResetsState) {
     original.insert({2, 20});  // This should create a split
 
     // Check that we have a split state
-    auto has_split_initially = original.split_point() != original.end();
+    auto has_split_initially = !!original.split_point();
 
     // Erase an element to create erased state
     auto it = original.find(2);
@@ -1205,7 +1208,7 @@ TEST_F(ReplaceMethod, ReplaceResetsState) {
 
     // After replace, should be in flat state with no erased elements
     EXPECT_EQ(original.size(), 3);
-    EXPECT_EQ(original.split_point(), original.end());  // Should be flat
+    EXPECT_EQ(original.split_point(), nullptr);  // Should be flat
     check_valid(original);
 
     // Verify new contents
@@ -1232,7 +1235,7 @@ TEST_F(ReplaceMethod, ExtractReplaceRoundTrip) {
     reconstructed.replace(std::move(container));
 
     EXPECT_EQ(reconstructed.size(), original_size);
-    EXPECT_EQ(reconstructed.split_point(), reconstructed.end());  // Should be flat
+    EXPECT_EQ(reconstructed.split_point(), nullptr);  // Should be flat
     check_valid(reconstructed);
 
     // Verify all elements are preserved
@@ -1265,7 +1268,7 @@ TEST_F(ReplaceMethod, ReplaceAfterComplexOperations) {
     original.replace(std::move(simple));
 
     EXPECT_EQ(original.size(), 3);
-    EXPECT_EQ(original.split_point(), original.end());  // Should be flat
+    EXPECT_EQ(original.split_point(), nullptr);  // Should be flat
     check_valid(original);
 
     EXPECT_EQ(original[100], 1000);
@@ -1284,7 +1287,7 @@ TEST_F(ReplaceMethod, ReplaceWithSplitAtBeginning) {
     original.replace(std::move(new_container), split_it);
 
     EXPECT_EQ(original.size(), 5);
-    EXPECT_EQ(original.split_point(), original.end());  // Should be flat (split at beginning)
+    EXPECT_EQ(original.split_point(), nullptr);  // Should be flat (split at beginning)
     check_valid(original);
 
     for (uint32_t i = 1; i <= 5; ++i) {
@@ -1302,7 +1305,7 @@ TEST_F(ReplaceMethod, ReplaceWithSplitAtEnd) {
     original.replace(std::move(new_container), split_it);
 
     EXPECT_EQ(original.size(), 5);
-    EXPECT_EQ(original.split_point(), original.end());  // Should be flat (split at end)
+    EXPECT_EQ(original.split_point(), nullptr);  // Should be flat (split at end)
     check_valid(original);
 
     for (uint32_t i = 1; i <= 5; ++i) {
@@ -1320,7 +1323,7 @@ TEST_F(ReplaceMethod, ReplaceWithSplitInMiddle) {
     original.replace(std::move(new_container), split_it);
 
     EXPECT_EQ(original.size(), 6);
-    EXPECT_NE(original.split_point(), original.end());  // Should have a split
+    EXPECT_NE(original.split_point(), nullptr);  // Should have a split
     check_valid(original);
 
     // Verify all elements are accessible
@@ -1346,7 +1349,7 @@ TEST_F(ReplaceMethod, ReplaceWithSplitPreservesIterator) {
 
     // Verify the split was established correctly
     EXPECT_EQ(original.size(), 5);
-    EXPECT_NE(original.split_point(), original.end());  // Should have a split
+    EXPECT_NE(original.split_point(), nullptr);  // Should have a split
     check_valid(original);
 
     EXPECT_EQ(original[10], 100);
@@ -1376,7 +1379,7 @@ TEST_F(ReplaceMethod, ReplaceWithSplitResetsErasedCount) {
 
     // After replace, erased count should be reset
     EXPECT_EQ(original.size(), 5);                      // All elements should be accessible
-    EXPECT_NE(original.split_point(), original.end());  // Should have a split
+    EXPECT_NE(original.split_point(), nullptr);         // Should have a split
     check_valid(original);
 
     // Verify all elements are accessible
@@ -1385,4 +1388,85 @@ TEST_F(ReplaceMethod, ReplaceWithSplitResetsErasedCount) {
     EXPECT_EQ(original[6], 60);
     EXPECT_EQ(original[8], 80);
     EXPECT_EQ(original[9], 90);
+}
+
+TEST(RandomizedStressTest, SquareMapVsStdMap) {
+    using Key = int;
+    using Value = int;
+    using SquareMap = geert::square_map<Key, Value>;
+    using StdMap = std::map<Key, Value>;
+
+    constexpr int kSeed = 42;
+    constexpr int kNumOps = 10000;
+    constexpr int kKeyRange = SquareMap::kMinSplitSize * 4;  // Keys in [0, 4*MinSplitSize)
+
+    SquareMap smap;
+    StdMap refmap;
+    std::mt19937 rng(kSeed);
+    std::uniform_int_distribution<int> op_dist(0, 3);  // 0: insert, 1: erase, 2: lookup, 3: iterate
+    std::uniform_int_distribution<Key> key_dist(0, kKeyRange - 1);
+
+    for (int i = 0; i < kNumOps; ++i) {
+        int op = op_dist(rng);
+        Key k = key_dist(rng);
+        Value v = k * 10 + i;
+        switch (op) {
+            case 0:  // insert
+                smap[k] = v;
+                refmap[k] = v;
+                break;
+            case 1:  // erase
+            {
+                auto rit = refmap.find(k);
+                auto sit = smap.find(k);
+                EXPECT_EQ(sit != smap.end(), rit != refmap.end());
+                if (rit != refmap.end()) {
+                    EXPECT_EQ(sit->first, rit->first);
+                    EXPECT_EQ(sit->second, rit->second);
+                    rit = refmap.erase(rit);
+                    sit = smap.erase(sit);
+                    EXPECT_EQ(sit != smap.end(), rit != refmap.end());
+                    if (rit != refmap.end()) {
+                        EXPECT_EQ(sit->first, rit->first);
+                        EXPECT_EQ(sit->second, rit->second);
+                    }
+                    check_valid(smap);
+                }
+            } break;
+            case 2:  // lookup
+            {
+                auto sit = smap.find(k);
+                auto rit = refmap.find(k);
+                if (rit == refmap.end()) {
+                    EXPECT_EQ(sit, smap.end());
+                } else {
+                    ASSERT_NE(sit, smap.end());
+                    EXPECT_EQ(sit->second, rit->second);
+                }
+            } break;
+            case 3:  // iterate
+            {
+                auto sit = smap.begin();
+                auto rit = refmap.begin();
+                ASSERT_EQ((sit == smap.end()), (rit == refmap.end()));
+
+                if (rit != refmap.end()) EXPECT_EQ(sit->first, rit->first);
+                for (; rit != refmap.end(); ++rit) {
+                    EXPECT_NE(sit, smap.end());
+                    EXPECT_EQ(sit->first, rit->first);
+                    EXPECT_EQ(sit->second, rit->second);
+                    ++sit;
+                }
+                EXPECT_EQ(sit, smap.end());
+                EXPECT_EQ(rit, refmap.end());
+            } break;
+        }
+        // After each op, could add more invariants here if needed
+        EXPECT_EQ(smap.size(), refmap.size()) << "Size mismatch after operation " << i;
+        check_valid(smap);
+    }
+    // Final check: all elements match
+    std::vector<std::pair<Key, Value>> svec(smap.begin(), smap.end());
+    std::vector<std::pair<Key, Value>> rvec(refmap.begin(), refmap.end());
+    EXPECT_EQ(svec, rvec);
 }

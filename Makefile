@@ -74,6 +74,8 @@ test: all
 		echo "Tests failed, rerunning with verbose output..."; \
 		$(MAKE) -C $(BUILD_DIR) test ARGS="--rerun-failed --output-on-failure"; \
 	}
+	@echo "Running Python system info tests..."
+	@$(PYTHON_NOPYC) test_system_info.py
 
 # Run benchmarks
 benchmark: all

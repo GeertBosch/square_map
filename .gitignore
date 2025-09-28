@@ -7,3 +7,4 @@ build_debug
 plots/*
 !plots/quickplot.svg
 compile_commands.json
+__pycache__

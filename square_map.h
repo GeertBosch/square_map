@@ -58,9 +58,9 @@ public:
         const_iterator& operator++() {
             // Precondition: s0 and s1 are dereferenceable.
 
-            auto initial_key = s0->first;
-
             while (true) {
+                auto initial_key = s0->first;
+
                 // Case: s0 == s1 - we're at the last element, advance to end
                 if (s0 == s1) {
                     ++s0;     // This makes s0 point to end()
@@ -92,6 +92,9 @@ public:
 
                 // Case: *s0' == *s1 (keys equal) - we're on a deleted item, loop again
                 // This means s0->first == s1->first (not s0 == s1)
+
+                // Advance s1, and deal with exhausting the left range
+                if (Compare()((++s1)->first, next_key)) s1 = s0;
                 // Continue the loop to advance once more
             }
         }
@@ -153,6 +156,8 @@ public:
 
     static_assert(sizeof(iterator) == 2 * sizeof(container_iterator));
 
+    // TODO: Reverse iterators
+
     // Element Access
     T& at(const Key& key) {
         return const_cast<T&>(_cthis()->at(key));
@@ -179,11 +184,13 @@ public:
         return cbegin();
     }
     const_iterator cbegin() const noexcept {
-        if (empty())
-            return cend();
+        if (empty()) return cend();
         auto it = _vthis()->_container.begin();
         auto alt = it + _split;
-        return Compare()(alt->first, it->first) ? iterator::make(alt, it) : iterator::make(it, alt);
+        do {
+            if (it == alt || Compare()(it->first, alt->first)) return iterator::make(it, alt);
+        } while (!Compare()(alt++->first, it++->first));
+        return iterator::make(--alt, --it);
     }
 
     iterator end() noexcept {
@@ -198,14 +205,14 @@ public:
         return iterator::make(end, end);
     }
 
-    iterator split_point() noexcept {
-        if (_container.empty() || _split == 0 || _split >= _container.size()) return end();
-        return find(_container[_split].first);
+    typename container_type::pointer split_point() noexcept {
+        if (_container.empty() || _split == 0 || _split >= _container.size()) return nullptr;
+        return &_container[_split];
     }
 
-    const_iterator split_point() const noexcept {
-        auto it = _vthis()->_container.split_point();
-        return iterator::make(it.s0, it.s1);
+    typename container_type::const_pointer split_point() const noexcept {
+        auto ptr = _vthis()->_container.split_point();
+        return const_cast<typename container_type::const_pointer>(ptr);
     }
 
     // Capacity
@@ -244,6 +251,17 @@ public:
             auto past_it = _container.erase(pos.s0);  // Points past the erased element
             return iterator::make(past_it, past_it);
         }
+        // Invariant: the largest element in the map is in the right range.
+        //            When the next largest element is in the left range, we need to swap it.
+        if (std::next(pos) == end() &&
+            key_compare()(std::prev(pos.s0)->first, _container[_split - 1].first)) {
+            // Move the last element of the left range to the end to maintain the invariant.
+            std::swap(_container[_split - 1], *pos.s0);
+            _container.erase(_container.begin() + (_split - 1));
+            --_split;  // Left range has shrunk by one, but nothing changed in erased element count
+            return end();
+        }
+
         // Invariant: split > 0 && size() >= 3, as there is at least one element in the left range,
         // one at the split point that is smaller, and one at the end that is larger.
 
@@ -257,6 +275,8 @@ public:
             //                                                                      ^ returned
 
             // Points past the erased element, all other iterators are invalidated.
+            auto next_key = std::next(pos)->first;
+            _split -= pos.s0 < _container.begin() + _split;
             auto past_it = _container.erase(pos.s0);
             // If we erased the last remaining item from the left range, meaning past_it points to
             // begin(), if past_it == _container.end() == _container.begin() + _split, or if past_it
@@ -268,9 +288,8 @@ public:
                           (past_it == _container.begin() + _split &&
                            Compare()((std::prev(past_it))->first, past_it->first));
             if (merged) _split = 0;
-            // Still need to think about erased elements
             if (past_it == _container.end()) return end();
-            return find(past_it->first);
+            return find(next_key);
         }
 
         // Item is strictly in the left range, so insert it into the right to mark it as erased.
@@ -279,7 +298,7 @@ public:
                                    value_key_compare());
 
         ++_erased;
-        auto&& next_key = std::next(pos)->first;
+        auto next_key = std::next(pos)->first;
         _container.emplace(it, value_type{key, T()});  // Invalidates all iterators.
         return find(next_key);
     }
