@@ -1396,13 +1396,12 @@ TEST(RandomizedStressTest, SquareMapVsStdMap) {
     using SquareMap = geert::square_map<Key, Value>;
     using StdMap = std::map<Key, Value>;
 
-    constexpr int kSeed = 42;
-    constexpr int kNumOps = 10000;
-    constexpr int kKeyRange = SquareMap::kMinSplitSize * 4;  // Keys in [0, 4*MinSplitSize)
+    constexpr int kNumOps = 10'000 * SquareMap::kMinSplitSize;
+    constexpr int kKeyRange = SquareMap::kMinSplitSize * 4;  // Keys in [0, 4 * MinSplitSize)
 
     SquareMap smap;
     StdMap refmap;
-    std::mt19937 rng(kSeed);
+    std::mt19937 rng;
     std::uniform_int_distribution<int> op_dist(0, 3);  // 0: insert, 1: erase, 2: lookup, 3: iterate
     std::uniform_int_distribution<Key> key_dist(0, kKeyRange - 1);
 

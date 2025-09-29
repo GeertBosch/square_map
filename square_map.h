@@ -251,14 +251,16 @@ public:
             auto past_it = _container.erase(pos.s0);  // Points past the erased element
             return iterator::make(past_it, past_it);
         }
-        // Invariant: the largest element in the map is in the right range.
-        //            When the next largest element is in the left range, we need to swap it.
-        if (std::next(pos) == end() &&
-            key_compare()(std::prev(pos.s0)->first, _container[_split - 1].first)) {
-            // Move the last element of the left range to the end to maintain the invariant.
-            std::swap(_container[_split - 1], *pos.s0);
-            _container.erase(_container.begin() + (_split - 1));
-            --_split;  // Left range has shrunk by one, but nothing changed in erased element count
+        // Invariant: the largest element in the map is in the right range. If we erase this
+        //            element, the last remaining elements in the left and right ranges may be
+        //            equal indicating that those erased elements now need to be removed.
+        //            After that removal we still may need a final swap to once more put the
+        //            largest remaining element on the right side.
+        if (std::next(pos.s0) == _container.end() &&
+            !key_compare()(_container[_split - 1].first, std::prev(pos.s0)->first)) {
+            // This is a tricky situation. For now just pop off the last element and merge.
+            _container.pop_back();
+            merge();
             return end();
         }
 
@@ -286,8 +288,8 @@ public:
             bool merged = past_it == _container.begin() ||
                           (past_it == _container.end() && _split == _container.size()) ||
                           (past_it == _container.begin() + _split &&
-                           Compare()((std::prev(past_it))->first, past_it->first));
-            if (merged) _split = 0;
+                           !Compare()(past_it->first, (std::prev(past_it))->first));
+            if (merged) merge();
             if (past_it == _container.end()) return end();
             return find(next_key);
         }
