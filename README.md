@@ -5,8 +5,7 @@
 This document proposes a new general purpose data structure, named a square map, that implements an
 ordered map interface. The square map balances the benefits of a binary search tree (tree map) and a
 sorted vector (flat map), while avoiding their primary downsides. The appendix includes a C++
-implementation of a square map and compares its performance against the std :: ordered_map and std
-:: flat_map standard library implementations.
+implementation of a square map and compares its performance against the `std::ordered_map` and `std::flat_map` standard library implementations.
 
 ## Motivation
 
@@ -15,10 +14,10 @@ allow for efficient key range queries and iteration in key order in addition to 
 keys. Improvements in these core components often result in improved overall application
 performance.
 
-The C++ standard library provides std :: ordered_map, which is generally implemented using a
+The C++ standard library provides `std::ordered_map`, which is generally implemented using a
 balanced red-black tree. While good in terms of asymptotic complexity, for small key/value pairs the
 overhead of dynamic memory allocation and internal pointers is significant, while for larger maps
-locality of memory accesses becomes an issue.
+locality of memory accesses becomes an issue for iteration.
 
 Starting with C++23, the `std::flat_map` adapts a sequence container, such as `std::vector`, to
 provide an alternative for `std::ordered_map` that allows for dense packing without space overhead
@@ -38,12 +37,12 @@ Myth of RAM for an empirical and theoretical underpinning of this notion.
 # Square Map Modification and Lookup
 
 The square map is a refinement of the flat map, so revisit properties of that data structure first.
-The flat map keeps elements in a sorted order, allowing lookup in a map of $n$ elements with $\log
-n+O(1)$ complexity using binary search. Given a sequence container with $n$ elements $e_{0} ...
-e_{n-1}$, where appending an element has a complexity that is amortized constant, inserting the
-$n^{\text {th }}$ element in a flat map has a complexity that is linear in $n$, as we may have to
-move up to $n$ existing items to keep the vector sorted. Building a map with $n$ items has a worst
-case cost of $n^{2} / 2+O(n)$ element moves.
+The flat map keeps elements in sorted order in a contiguous area of memory, allowing lookup in a map
+of $n$ elements with $\log n+O(1)$ complexity using binary search. Given a sequence container with
+$n$ elements $e_{0} ... e_{n-1}$, where appending an element has a complexity that is amortized
+constant, inserting the $n^{\text {th }}$ element in a flat map has a complexity that is linear in
+$n$, as we may have to move up to $n$ existing items to keep the vector sorted. Building a map with
+$n$ items has a worst case cost of $n^{2} / 2+O(n)$ element moves.
 
 A square map is also an adaptation of a sequence container, but using two sorted ranges instead of
 one. If there is a $j<n$ such that element $e_{j-1}>e_{j^{\prime}}$, element $e_{j}$ is the split
