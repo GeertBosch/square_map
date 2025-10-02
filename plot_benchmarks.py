@@ -18,14 +18,14 @@ def add_log_scale_ruler(ax, position='upper right'):
     # Get the current axis limits
     xlim = ax.get_xlim()
     ylim = ax.get_ylim()
-    
+
     # Calculate ruler dimensions and position in log space
     x_range = np.log10(xlim[1]) - np.log10(xlim[0])
     y_range = np.log10(ylim[1]) - np.log10(ylim[0])
-    
+
     # Ruler dimensions (as fraction of plot area)
     ruler_width = 0.06 * x_range  # Width for ruler marks
-    
+
     # Position the ruler
     if position == 'upper right':
         ruler_x = np.log10(xlim[1]) - ruler_width - 0.05 * x_range
@@ -36,34 +36,34 @@ def add_log_scale_ruler(ax, position='upper right'):
     else:  # lower right
         ruler_x = np.log10(xlim[1]) - ruler_width - 0.05 * x_range
         ruler_y_base = np.log10(ylim[0]) + 0.05 * y_range
-    
+
     # Convert to linear coordinates
     ruler_x_lin = 10**ruler_x
     base_y = 10**ruler_y_base
     ruler_width_lin = 10**(ruler_x + ruler_width) - ruler_x_lin
-    
+
     # Draw vertical baseline (main ruler line) - no background box
     baseline_x = ruler_x_lin + ruler_width_lin * 0.1
-    ax.plot([baseline_x, baseline_x], 
+    ax.plot([baseline_x, baseline_x],
            [base_y, base_y * 5], 'k-', linewidth=1.2, zorder=11)  # Only go to 5x
-    
+
     # Draw horizontal scale marks with same small size - simplified set
     factors = [1, 2, 5]  # Just the key reference points
-    
+
     for factor in factors:
         y_pos = base_y * factor
         mark_end = baseline_x + ruler_width_lin * 0.13  # Much smaller tick marks
-        
+
         # Horizontal tick mark extending right from baseline
-        ax.plot([baseline_x, mark_end], [y_pos, y_pos], 
+        ax.plot([baseline_x, mark_end], [y_pos, y_pos],
                'k-', linewidth=0.8, zorder=11)
-        
+
         # Label to the right of the mark
-        ax.text(mark_end + ruler_width_lin * 0.15, y_pos, f'{factor}×', 
+        ax.text(mark_end + ruler_width_lin * 0.15, y_pos, f'{factor}×',
                fontsize=7, va='center', ha='left', zorder=12)
-    
+
     # Title to the right of the ruler
-    ax.text(ruler_x_lin + ruler_width_lin * 0.8, base_y * 3, 
+    ax.text(ruler_x_lin + ruler_width_lin * 0.8, base_y * 3,
            'Time\nScale', fontsize=8, ha='left', va='center', weight='bold', zorder=12)
 
 def parse_benchmark_name(name):
@@ -124,30 +124,30 @@ def format_system_info(context):
     """Format system information for use as plot subtitle."""
     if not context:
         return ""
-    
+
     # Extract CPU information
     num_cpus = context.get('num_cpus', 0)
     mhz_per_cpu = context.get('mhz_per_cpu', 0)
     cpu_scaling_enabled = context.get('cpu_scaling_enabled', False)
-    
+
     # Format CPU speed
     if cpu_scaling_enabled or mhz_per_cpu < 1000 or mhz_per_cpu > 10000:
         cpu_speed_str = "???"
     else:
         ghz = mhz_per_cpu / 1000.0
         cpu_speed_str = f"{ghz:.1f} GHz"
-    
+
     # Extract cache information
     caches = context.get('caches', [])
     l1d_size = None
     l2_size = None
-    
+
     for cache in caches:
         if cache.get('type') == 'Data' and cache.get('level') == 1:
             l1d_size = cache.get('size')
         elif cache.get('type') == 'Unified' and cache.get('level') == 2:
             l2_size = cache.get('size')
-    
+
     # Format cache sizes
     def format_cache_size(size_bytes):
         if size_bytes is None:
@@ -158,10 +158,10 @@ def format_system_info(context):
             return f"{size_bytes // 1024} KB"
         else:
             return f"{size_bytes // (1024 * 1024)} MB"
-    
+
     l1d_str = format_cache_size(l1d_size)
     l2_str = format_cache_size(l2_size)
-    
+
     return f"{num_cpus} × {cpu_speed_str} CPU  -  {l1d_str} L1D  -  {l2_str} L2"
 
 def create_plots(df, context, output_dir='plots'):
@@ -177,17 +177,17 @@ def create_plots(df, context, output_dir='plots'):
 
     # Set up the plotting style
     plt.style.use('default')
-    
+
     # Define colors for map types and line styles for operations
     map_type_colors = {
         'square_map_int': '#1f77b4',
-        'std_map_int': '#2ca02c', 
+        'std_map_int': '#2ca02c',
         'flat_map_int': '#ff7f0e',
         'unordered_map_int': '#d62728',
         'vector_int': '#9467bd',
         'unknown': '#8c564b'
     }
-    
+
     operation_styles = {
         'Insert': '-',
         'Lookup': ':',
@@ -205,21 +205,21 @@ def create_plots(df, context, output_dir='plots'):
         # Plot each combination of map type and operation
         map_types = gen_data['map_type'].unique()
         operations = gen_data['operation'].unique()
-        
+
         for map_type in map_types:
             map_color = map_type_colors.get(map_type, '#8c564b')
-            
+
             for operation in operations:
                 op_style = operation_styles.get(operation, '-')
-                
+
                 subset_data = gen_data[
-                    (gen_data['map_type'] == map_type) & 
+                    (gen_data['map_type'] == map_type) &
                     (gen_data['operation'] == operation)
                 ].sort_values('size')
 
                 if len(subset_data) > 0:
                     plt.loglog(subset_data['size'], subset_data['time_per_item_ns'],
-                              marker='o', label=f'{map_type} - {operation}', 
+                               marker='o', label=f'{map_type} - {operation}',
                               color=map_color, linestyle=op_style,
                               linewidth=2, markersize=6)
 
@@ -261,7 +261,7 @@ def create_plots(df, context, output_dir='plots'):
 
         # Save the plot
         filename = f"{output_dir}/combined_{generator}.svg"
-        plt.savefig(filename, dpi=300, bbox_inches='tight')
+        plt.savefig(filename, dpi=300, bbox_inches='tight', metadata={'Date': None})
         print(f"Saved plot: {filename}")
         plt.close()
 
@@ -278,17 +278,17 @@ def create_comparison_plot(df, context, output_dir='plots'):
 
     operations = ['Insert', 'Lookup', 'RangeIteration']
     generators = ['Sequential', 'Random']
-    
+
     # Define colors for map types and line styles for operations
     map_type_colors = {
         'square_map_int': '#1f77b4',
-        'std_map_int': '#2ca02c', 
+        'std_map_int': '#2ca02c',
         'flat_map_int': '#ff7f0e',
         'unordered_map_int': '#d62728',
         'vector_int': '#9467bd',
         'unknown': '#8c564b'
     }
-    
+
     operation_styles = {
         'Insert': '-',
         'Lookup': ':',
@@ -339,7 +339,7 @@ def create_comparison_plot(df, context, output_dir='plots'):
                     ha='right', va='top', transform=ax.transAxes, bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', boxstyle='round,pad=0.2'))
     plt.gcf().suptitle('Benchmark Comparison', fontsize=14)
     filename = f"{output_dir}/benchmark_comparison.svg"
-    plt.savefig(filename, dpi=300, bbox_inches='tight')
+    plt.savefig(filename, dpi=300, bbox_inches='tight', metadata={'Date': None})
     print(f"Saved comprehensive comparison: {filename}")
     plt.close()
     plt.close()

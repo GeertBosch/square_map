@@ -103,7 +103,7 @@ quickplot: $(BUILD_DIR)/quickbench_results.json $(BUILD_DIR)/quickbench_referenc
 		if [ -n "$$PLOT_FILE" ]; then \
 			if command -v timg >/dev/null 2>&1 && ([ "$$TERM_PROGRAM" = "iTerm.app" ] || [ "$$TERM_PROGRAM" = "vscode" ]); then \
 				echo "Displaying plot in terminal..."; \
-				timg "$$PLOT_FILE"; \
+				timg "$$PLOT_FILE" || echo "Quick plot created: $$PLOT_FILE"; \
 			else \
 				echo "Quick plot created: $$PLOT_FILE"; \
 			fi; \
