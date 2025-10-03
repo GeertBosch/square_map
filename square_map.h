@@ -112,6 +112,9 @@ public:
 
         pointer operator->() { return &*s0; }
 
+    protected:
+        const_iterator(container_iterator s0, container_iterator s1) : s0(s0), s1(s1) {}
+
     private:
         // s0 points to the current element, which either may be in either range. s1  points
         // to the next (larger) element in the alternate range, or to a smaller one if that range is
@@ -145,11 +148,11 @@ public:
 
     private:
         friend square_map;
+
+        iterator(container_iterator s0, container_iterator s1) : const_iterator(s0, s1) {}
+
         static iterator make(container_iterator s0, container_iterator s1) {
-            iterator ret;
-            ret.s0 = s0;
-            ret.s1 = s1;
-            return ret;
+            return iterator(s0, s1);
         }
         static iterator make(const_iterator it) { return make(it.s0, it.s1); }
     };
