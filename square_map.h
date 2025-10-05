@@ -58,24 +58,10 @@ public:
         const_iterator& operator++() {
             // Precondition: s0 and s1 are dereferenceable.
 
-            while (true) {
-                auto initial_key = s0->first;
+            // This loop iterates when encountering erased elements
 
-                // Case: s0 == s1 - we're at the last element, advance to end
-                if (s0 == s1) {
-                    ++s0;     // This makes s0 point to end()
-                    s1 = s0;  // Set s1 to end() as well to match cend() behavior
-                    return *this;
-                }
-
-                // Advance s0 to get s0'
-                ++s0;
-                auto next_key = s0->first;
-
-                // Case: s0' = s1 - we're at the last element after advancement
-                if (s0 == s1) {
-                    return *this;
-                }
+            for (auto initial_key = s0->first; s0++ != s1; initial_key = s0->first) {
+                // Case: s0 != s1 - we still need to merge two ranges
 
                 // Case: *s0' < *s1 - valid iterator unless exhausting left range
                 if (Compare()(s0->first, s1->first)) {
@@ -90,17 +76,23 @@ public:
                     return *this;
                 }
 
+                // Case: s0' = s1 - we're at the last sequence after advancement
+                if (s0 == s1) break;
+
                 // Case: *s0' == *s1 (keys equal) - we're on a deleted item, loop again
                 // This means s0->first == s1->first (not s0 == s1)
 
-                // Advance s1, and deal with exhausting the left range
-                if (Compare()((++s1)->first, next_key)) s1 = s0;
-                // Continue the loop to advance once more
+                // Advance s1 past the erased element, and deal with exhausting the left range
+                if (Compare()((++s1)->first, s0->first)) s1 = s0;
+                // Continue the loop to advance once more now we skipped an erased element
             }
+            // No more merging, so both iterators are equal
+            s1=s0;
+            return *this;
         }
 
         const_iterator operator++(int) {
-            iterator pre = *this;
+            const_iterator pre = *this;
             return ++*this, pre;
         }
 
@@ -137,7 +129,7 @@ public:
             return *this;
         }
 
-        const_iterator operator++(int) {
+        iterator operator++(int) {
             iterator pre = *this;
             return ++*this, pre;
         }
@@ -166,7 +158,23 @@ public:
         return const_cast<T&>(_cthis()->at(key));
     }
     const T& at(const Key& key) const {
-        if (auto it = find(key); it != end()) return it->second;
+        auto& c = _vthis()->_container;
+        if (!_split) {
+            // Only one range, do a single binary search. No erased items to check for.
+            auto it = std::lower_bound(c.begin(), c.end(), key, value_key_compare());
+            if (it != c.end()) return it->second;
+        }
+
+        auto split = c.begin() + _split;
+        auto left_it = std::lower_bound(c.begin(), split, key, value_key_compare());
+        bool in_left = left_it < split && !Compare()(key, left_it->first);
+        if (in_left && !_erased) return left_it->second;
+
+        auto right_it = std::lower_bound(split, c.end(), key, value_key_compare());
+        bool in_right = right_it < c.end() && !Compare()(key, right_it->first);
+        if (in_left && !in_right) return left_it->second;
+        if (in_right && !in_left) return right_it->second;
+    not_found:
         throw std::out_of_range("square_map<>: index out of range");
     }
 
