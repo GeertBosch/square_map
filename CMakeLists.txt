@@ -6,12 +6,34 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Set default build type to Release if not specified
 if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Release)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
 
 # Set debug flags for better debugging experience
 set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DDEBUG")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
+
+# Build a pinned Google Benchmark release instead of using distro libraries,
+# which may have been compiled with debug instrumentation.
+include(FetchContent)
+set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+set(BENCHMARK_ENABLE_GTEST_TESTS OFF CACHE BOOL "" FORCE)
+set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+set(BENCHMARK_DOWNLOAD_DEPENDENCIES OFF CACHE BOOL "" FORCE)
+if(POLICY CMP0135)
+    cmake_policy(SET CMP0135 NEW)
+endif()
+FetchContent_Declare(
+    googlebenchmark
+    URL https://github.com/google/benchmark/archive/refs/tags/v1.9.1.tar.gz
+)
+FetchContent_MakeAvailable(googlebenchmark)
+if(MSVC)
+    target_compile_options(benchmark PRIVATE /O2)
+else()
+    target_compile_options(benchmark PRIVATE -O3)
+endif()
+target_compile_definitions(benchmark PRIVATE NDEBUG)
 
 # Enable testing
 enable_testing()
@@ -22,7 +44,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Find required packages
 find_package(GTest REQUIRED)
-find_package(benchmark REQUIRED)
 
 # Set policy CMP0167 to NEW to suppress FindBoost warning
 if(POLICY CMP0167)
@@ -36,13 +57,13 @@ if(NOT Boost_INCLUDE_DIRS)
 endif()
 
 message(STATUS "Found GTest: ${GTEST_INCLUDE_DIRS}")
-message(STATUS "Found benchmark: ${benchmark_INCLUDE_DIRS}")
+message(STATUS "Google Benchmark: ${googlebenchmark_SOURCE_DIR} (Release optimized)")
 message(STATUS "Found Boost: ${Boost_INCLUDE_DIRS}")
 
 # Now add the square_map test
 add_executable(square_map_test square_map_test.cpp)
 target_link_libraries(square_map_test PRIVATE GTest::GTest GTest::Main)
-target_include_directories(square_map_test PRIVATE 
+target_include_directories(square_map_test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${GTEST_INCLUDE_DIRS}
 )
@@ -53,7 +74,7 @@ add_test(NAME square_map_test COMMAND square_map_test)
 # Add algorithms test
 add_executable(algorithms_test algorithms_test.cpp)
 target_link_libraries(algorithms_test PRIVATE GTest::GTest GTest::Main)
-target_include_directories(algorithms_test PRIVATE 
+target_include_directories(algorithms_test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${GTEST_INCLUDE_DIRS}
 )
@@ -63,21 +84,21 @@ add_test(NAME algorithms_test COMMAND algorithms_test)
 
 # Add benchmark executable
 add_executable(square_map_bm square_map_bm.cpp)
-target_link_libraries(square_map_bm PRIVATE 
-    benchmark::benchmark 
+target_link_libraries(square_map_bm PRIVATE
+    benchmark::benchmark
     Boost::container
 )
-target_include_directories(square_map_bm PRIVATE 
+target_include_directories(square_map_bm PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${Boost_INCLUDE_DIRS}
 )
 
 # Add complexity test executable
 add_executable(complexity_test complexity_test.cpp)
-target_link_libraries(complexity_test PRIVATE 
+target_link_libraries(complexity_test PRIVATE
     Boost::container
 )
-target_include_directories(complexity_test PRIVATE 
+target_include_directories(complexity_test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${Boost_INCLUDE_DIRS}
 )
