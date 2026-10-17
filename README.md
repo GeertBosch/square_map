@@ -114,7 +114,7 @@ iterators ( $s_{0}, s_{1}$ ) on its underlying sequence container.
 | Valid Iterator State         | Description |
 |-------------------------------|-------------|
 | $\left(s_{0}, s_{1}\right)$, $s_{0}\ne_{\text{end}}$ and $s_{1}\ne_{\text{end}}$ | Possible states of iterator $m = \left(s_{0}, s_{1}\right)$, where $m$ is dereferenceable. |
-| $s_{0} = s_{1} = s_{\text{end}}$ | This is the past-the-end iterator $m_{\text{end}}$. The iterator is valid, but may not be dereferenced or advanced. 
+| $s_{0} = s_{1} = s_{\text{end}}$ | This is the past-the-end iterator $m_{\text{end}}$. The iterator is valid, but may not be dereferenced or advanced.
 
 ## Construction
 
@@ -173,6 +173,8 @@ in your application depends on many factors, including the following:
   performance.
 
 # Performance Comparison
+The test system is a 2019 iMac with an Intel 8-core 3.6 GHz i9 processor and 64GB 2667 MHz DDR4 RAM.
+Your mileage will vary. 
 ![Performance Comparison](plots/quickplot.svg) While this graph is dense, it clearly illustrates the
 most consequential performance properties of the square map. The vertical axis uses nanoseconds as
 units, rather than move or comparison operations. This reflects the practical importance of time and
@@ -180,14 +182,17 @@ the acknowledgement that not all comparisons and moves are equal cost. The squar
 illustrates how a memory model where random access is O(1) regardless of the size of the data set
 accessed is not realistic.
 
-## Asymptotic Complexity
+## Asymptotic Complexity in Time
 Comparing actual timing results with the reference plots using log-log scale, we can derive the
 following:
-* Random flat map inserts have $O(n)$ complexity both in theory and in practice. This is unusable.
-  However, while the square map has worse performance according to theory with uniform memory access
-  costs, it turns out that for this test scenario the square map is uniformly better. Even at the
-  point where the square map and `std::map` converge, the derivatives are close. So, while
-  `std::map` may still outperform in many cases in the millions to billions territory, 
+* Random flat map inserts have $O(n)$ complexity both in theory and in practice. Even for
+  benchmarking purposes it was impractical to run tests for a container size of 1 million, as we can
+  estimate that there wouls be a 250x slow down compared to the other two maps. Instead of a test
+  taking about a second, it would be 6 minutes. </br> However, while the square map has worse
+  performance according to theory assuming uniform memory access costs, it turns out that for this
+  test scenario the square map performs uniformly better for inserts. The `std::map` will still be
+  asymptotically better when the per element cost of move operations is no longer dominated by
+  random memory access.
 * Random flat map lookups have $O(\log n)$ complexity until about 4K elements (32 KB memory in the
   map) and then gets much more expensive. This seems to be an effect of exceeding L1 cache
   size, where memory latencies start to dominate compute. For larger sizes the flat map and square
@@ -197,12 +202,15 @@ following:
   elements at a 64-byte cache line each, this also adds up to 32 KB of L1. Still, all three maps
   stay within a relatively narrow band of up to 4x or so of time per operation.
 * Both flat map and square map have $O(1)$ complexity for range iteration, remarkably constant even
-  for large $n$. However, range iteration on a `std::map` becomes close to random lookup performance
-  of the square map for higher $n$. Again, the flat map is omitted here, as it takes too long to
-  insert the data. It's still surprising how bad the `std::map` gets compared to the flat
+  for large $n$ reflecting the effectiveness of prefetching done in modern processors. However,
+  for range iteration on a `std::map` each next access depends on the result of the previous one,
+  resulting in iteration becoming increasingly similar to random point lookup.
 * Algorithic complexity of point lookups seems similar for all three data structures. For smallish
-  maps below 1K elements, `std::map` is best, while above 10K elements the square map and flat map
-  take over due to memory locality, but there's never more than a 4x difference regardless of $n$. 
+  maps below 1K elements, `std::map` is best. The L1 cache holds 512 cache lines of 64 bytes each,
+  so it seems likely that the L1 latency might be better than the extra logic performed to compute
+  the next element to access in the flat and square maps. Above 10K elements the square map and flat
+  map take over due to the smaller per element cache footprint, but there's never more than a 4x
+  difference regardless of $n$.
 
 ### Inserts
 There are three observations: two expected, and one remarkable. The flat map has a complexity that
@@ -215,13 +223,13 @@ $n$-squared code in practice: the costs are prohibitive even when $n$ gets just 
 
 The other expected observation is for range iteration. Both the flat map and the squared map have
 essentially constant $O(1)$ performance for iteration, while iteraton over a `std::map` shows costs
-clearly exceeding $O(log n)$.
+clearly exceeding $O(\log n)$.
 
-Still, one could expect the $\sqrt(n)$ for square maps to become similarly bad, as its complexity in
+Still, one could expect the $\sqrt n$ for square maps to become similarly bad, as its complexity in
 the graph would be a straight line, just as $O(n)$, but with a slope that is half. The experimental
 results however show very similar insert behavior for both the `std::map` and the square map up to 1
 million elements. The cost for inserting into a square map never exceeds that of inserting into a
-`std::map` and Even the slope of the graph between the last two points is the same. This clearly
+`std::map` and even the slope of the graph between the last two points is the same. This clearly
 illustrates how not all memory accesses are equal, and designing algorithms to respect memory
 locality can yield asymptotic benefits on the time scale that differ from those on the number of
-operations. 
+operations.
