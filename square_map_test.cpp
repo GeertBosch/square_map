@@ -1,6 +1,5 @@
 
 #include <gtest/gtest.h>
-#include <gmock/gmock.h>
 #include <algorithm>
 #include <cstdint>
 #include <random>
