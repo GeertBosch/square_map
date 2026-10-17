@@ -27,27 +27,26 @@ check-cmake:
 		exit 127; \
 	}
 
-# Default target: ensure build directory exists and run make there
-all: $(BUILD_DIR)/Makefile
-	@$(MAKE) -C $(BUILD_DIR)
+# Configure release and debug build trees. CMake retains the selected generator
+# for an existing build directory, so builds work with both Ninja and Makefiles.
+.PHONY: configure debug-configure
+configure: | check-cmake
+	@cmake -S . -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=Release
+
+debug-configure: | check-cmake
+	@cmake -S . -B $(DEBUG_BUILD_DIR) -DCMAKE_BUILD_TYPE=Debug
+
+# Default target: configure and build the release tree
+all: configure
+	@cmake --build $(BUILD_DIR) --parallel
 	@if [ -f $(BUILD_DIR)/compile_commands.json ]; then \
 		cp $(BUILD_DIR)/compile_commands.json . ; \
 		echo "Updated compile_commands.json for VSCode"; \
 	fi
 
-# Create build directory and generate Makefile if it doesn't exist
-$(BUILD_DIR)/Makefile: CMakeLists.txt | check-cmake
-	@mkdir -p $(BUILD_DIR)
-	@cd $(BUILD_DIR) && cmake -DCMAKE_BUILD_TYPE=Release ..
-
-# Create debug build directory and generate Makefile if it doesn't exist
-$(DEBUG_BUILD_DIR)/Makefile: CMakeLists.txt | check-cmake
-	@mkdir -p $(DEBUG_BUILD_DIR)
-	@cd $(DEBUG_BUILD_DIR) && cmake -DCMAKE_BUILD_TYPE=Debug ..
-
 # Debug target: build all test executables in debug mode
-debug: $(DEBUG_BUILD_DIR)/Makefile
-	@$(MAKE) -C $(DEBUG_BUILD_DIR) square_map_test algorithms_test complexity_test
+debug: debug-configure
+	@cmake --build $(DEBUG_BUILD_DIR) --parallel --target square_map_test algorithms_test complexity_test
 	@if [ -f $(DEBUG_BUILD_DIR)/compile_commands.json ]; then \
 		cp $(DEBUG_BUILD_DIR)/compile_commands.json . ; \
 		echo "Updated compile_commands.json for VSCode (Debug mode)"; \
@@ -61,9 +60,9 @@ debug: $(DEBUG_BUILD_DIR)/Makefile
 # Run tests in debug mode
 debug-test: debug
 	@echo "Running tests in debug mode..."
-	@$(MAKE) -C $(DEBUG_BUILD_DIR) test || { \
+	@ctest --test-dir $(DEBUG_BUILD_DIR) --output-on-failure || { \
 		echo "Debug tests failed, rerunning with verbose output..."; \
-		$(MAKE) -C $(DEBUG_BUILD_DIR) test ARGS="--rerun-failed --output-on-failure"; \
+		ctest --test-dir $(DEBUG_BUILD_DIR) --rerun-failed --output-on-failure; \
 	}
 
 # Clean target: remove all build files and plot files
@@ -87,30 +86,26 @@ rebuild: clean all
 
 # Run tests
 test: all venv
-	@$(MAKE) -C $(BUILD_DIR) test || { \
+	@ctest --test-dir $(BUILD_DIR) --output-on-failure || { \
 		echo "Tests failed, rerunning with verbose output..."; \
-		$(MAKE) -C $(BUILD_DIR) test ARGS="--rerun-failed --output-on-failure"; \
+		ctest --test-dir $(BUILD_DIR) --rerun-failed --output-on-failure; \
 	}
 	@echo "Running Python system info tests..."
 	@$(PYTHON_NOPYC) test_system_info.py
 
 # Run benchmarks
 benchmark: all
-	@$(MAKE) -C $(BUILD_DIR) square_map_bm
 	@cd $(BUILD_DIR) && ./square_map_bm --benchmark_format=json --benchmark_out=benchmark_results.json --benchmark_min_time=0.2s
 
 # Run quick benchmarks (only square_map with Random key order)
-$(BUILD_DIR)/quickbench_results.json: square_map_bm.cpp square_map.h
-	@$(MAKE) -C $(BUILD_DIR) square_map_bm
+$(BUILD_DIR)/quickbench_results.json: square_map_bm.cpp square_map.h all
 	@cd $(BUILD_DIR) && ./square_map_bm --benchmark_filter="BM_(Insert|Lookup|RangeIteration)<square_map_int, KeyOrder::Random>" --benchmark_out=quickbench_results.json --benchmark_min_time=0.1s
 
 quickbench: all
-	@$(MAKE) -C $(BUILD_DIR) square_map_bm
 	@cd $(BUILD_DIR) && ./square_map_bm --benchmark_filter="BM_(Insert|Lookup|RangeIteration)<square_map_int, KeyOrder::Random>" --benchmark_out=quickbench_results.json --benchmark_min_time=0.1s
 
 # Generate reference benchmarks (std::map and boost::flat_map with Random key order)
-$(BUILD_DIR)/quickbench_reference.json: square_map_bm.cpp
-	@$(MAKE) -C $(BUILD_DIR) square_map_bm
+$(BUILD_DIR)/quickbench_reference.json: square_map_bm.cpp $(BUILD_DIR)/quickbench_results.json
 	@cd $(BUILD_DIR) && ./square_map_bm --benchmark_filter="BM_(Insert|Lookup|RangeIteration)<(std_map_int|flat_map_int), KeyOrder::Random>" --benchmark_out=quickbench_reference.json --benchmark_min_time=0.1s
 
 # Generate quick plot from quickbench results
