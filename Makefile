@@ -6,9 +6,26 @@
 # Build directory
 BUILD_DIR := build
 DEBUG_BUILD_DIR := build_debug
+VENV_DIR := .venv
+VENV_PYTHON := $(VENV_DIR)/bin/python
 
 # Python command that disables .pyc file generation
-PYTHON_NOPYC = PYTHONDONTWRITEBYTECODE=1 python3
+PYTHON_NOPYC = PYTHONDONTWRITEBYTECODE=1 $(VENV_PYTHON)
+
+# Create the plotting environment and install its third-party dependencies.
+.PHONY: venv
+venv:
+	@if [ ! -x "$(VENV_PYTHON)" ]; then python3 -m venv "$(VENV_DIR)"; fi
+	@$(VENV_PYTHON) -c "import matplotlib, numpy, pandas" >/dev/null 2>&1 || \
+		$(VENV_PYTHON) -m pip install matplotlib numpy pandas
+
+# Check the build-system prerequisite before trying to configure.
+.PHONY: check-cmake
+check-cmake:
+	@command -v cmake >/dev/null 2>&1 || { \
+		echo "Error: Build dependencies are missing. Install them with: sudo apt install cmake build-essential libgtest-dev libboost-container-dev"; \
+		exit 127; \
+	}
 
 # Default target: ensure build directory exists and run make there
 all: $(BUILD_DIR)/Makefile
@@ -19,12 +36,12 @@ all: $(BUILD_DIR)/Makefile
 	fi
 
 # Create build directory and generate Makefile if it doesn't exist
-$(BUILD_DIR)/Makefile: CMakeLists.txt
+$(BUILD_DIR)/Makefile: CMakeLists.txt | check-cmake
 	@mkdir -p $(BUILD_DIR)
-	@cd $(BUILD_DIR) && cmake ..
+	@cd $(BUILD_DIR) && cmake -DCMAKE_BUILD_TYPE=Release ..
 
 # Create debug build directory and generate Makefile if it doesn't exist
-$(DEBUG_BUILD_DIR)/Makefile: CMakeLists.txt
+$(DEBUG_BUILD_DIR)/Makefile: CMakeLists.txt | check-cmake
 	@mkdir -p $(DEBUG_BUILD_DIR)
 	@cd $(DEBUG_BUILD_DIR) && cmake -DCMAKE_BUILD_TYPE=Debug ..
 
@@ -69,7 +86,7 @@ clean:
 rebuild: clean all
 
 # Run tests
-test: all
+test: all venv
 	@$(MAKE) -C $(BUILD_DIR) test || { \
 		echo "Tests failed, rerunning with verbose output..."; \
 		$(MAKE) -C $(BUILD_DIR) test ARGS="--rerun-failed --output-on-failure"; \
@@ -97,9 +114,9 @@ $(BUILD_DIR)/quickbench_reference.json: square_map_bm.cpp
 	@cd $(BUILD_DIR) && ./square_map_bm --benchmark_filter="BM_(Insert|Lookup|RangeIteration)<(std_map_int|flat_map_int), KeyOrder::Random>" --benchmark_out=quickbench_reference.json --benchmark_min_time=0.1s
 
 # Generate quick plot from quickbench results
-quickplot: $(BUILD_DIR)/quickbench_results.json $(BUILD_DIR)/quickbench_reference.json
+quickplot: $(BUILD_DIR)/quickbench_results.json $(BUILD_DIR)/quickbench_reference.json venv
 	@if [ -f $(BUILD_DIR)/quickbench_results.json ] && [ -f $(BUILD_DIR)/quickbench_reference.json ]; then \
-	source .venv/bin/activate && PLOT_FILE=$$($(PYTHON_NOPYC) quickplot.py $(BUILD_DIR)/quickbench_results.json $(BUILD_DIR)/quickbench_reference.json); \
+	PLOT_FILE=$$($(PYTHON_NOPYC) quickplot.py $(BUILD_DIR)/quickbench_results.json $(BUILD_DIR)/quickbench_reference.json); \
 		if [ -n "$$PLOT_FILE" ]; then \
 			if command -v timg >/dev/null 2>&1 && ([ "$$TERM_PROGRAM" = "iTerm.app" ] || [ "$$TERM_PROGRAM" = "vscode" ]); then \
 				echo "Displaying plot in terminal..."; \
@@ -113,9 +130,9 @@ quickplot: $(BUILD_DIR)/quickbench_results.json $(BUILD_DIR)/quickbench_referenc
 	fi
 
 # Generate plots from benchmark results
-plots: benchmark
+plots: benchmark venv
 	@if [ -f $(BUILD_DIR)/benchmark_results.json ]; then \
-	source .venv/bin/activate && $(PYTHON_NOPYC) plot_benchmarks.py $(BUILD_DIR)/benchmark_results.json; \
+	$(PYTHON_NOPYC) plot_benchmarks.py $(BUILD_DIR)/benchmark_results.json; \
 	else \
 		echo "No benchmark results found. Run 'make benchmark' first."; \
 	fi
@@ -135,4 +152,4 @@ help:
 	@echo "  plots      - Run benchmarks and generate plots"
 	@echo "  help       - Show this help message"
 
-.PHONY: all clean rebuild test debug debug-test benchmark quickbench quickplot plots help
+.PHONY: all clean rebuild test debug debug-test benchmark quickbench quickplot plots venv help
