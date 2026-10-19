@@ -288,7 +288,9 @@ public:
             //                                                                      ^ returned
 
             // Points past the erased element, all other iterators are invalidated.
-            auto next_key = std::next(pos)->first;
+            // When erasing the last element, next_key is unused and std::next(pos) is end().
+            auto next_key =
+                std::next(pos.s0) == _container.end() ? pos.s0->first : std::next(pos)->first;
             _split -= pos.s0 < _container.begin() + _split;
             auto past_it = _container.erase(pos.s0);
             // If we erased the last remaining item from the left range, meaning past_it points to

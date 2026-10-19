@@ -10,7 +10,8 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 # Set debug flags for better debugging experience
-set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DDEBUG")
+set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DDEBUG -fsanitize=address,undefined -fno-sanitize-recover=all")
+set(CMAKE_EXE_LINKER_FLAGS_DEBUG "-fsanitize=address,undefined")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
 
 # Build a pinned Google Benchmark release instead of using distro libraries,

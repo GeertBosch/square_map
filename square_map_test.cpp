@@ -487,6 +487,19 @@ TEST(EraseMethod, EraseAroundMergeSize) {
         }
     }
 }
+TEST(EraseMethod, EraseLastElementOfSplitMap) {
+    using Map = geert::square_map<int, int>;
+    auto map = inject_with_split_index<Map>(
+        Map::container_type{{1, 10}, {2, 20}, {4, 40}, {3, 30}, {5, 50}, {7, 70}}, 3);
+    ASSERT_NE(map.split_point(), nullptr);
+
+    EXPECT_EQ(map.erase(map.find(7)), map.end());
+    check_valid(map);
+    std::vector<std::pair<int, int>> remaining(map.begin(), map.end());
+    std::vector<std::pair<int, int>> expected = {{1, 10}, {2, 20}, {3, 30}, {4, 40}, {5, 50}};
+    EXPECT_EQ(remaining, expected);
+}
+
 TEST(EraseMethod, EraseAllOddNumbers) {
     using Map = geert::square_map<uint32_t, bool>;
     Map map;
