@@ -31,20 +31,20 @@ public:
 
     // Default constructor
     InstrumentedInt() : value(0) {}
-    
+
     // Value constructor
     explicit InstrumentedInt(int v) : value(v) {}
-    
+
     // Copy constructor
     InstrumentedInt(const InstrumentedInt& other) : value(other.value) {
         copy_count++;
     }
-    
+
     // Move constructor
     InstrumentedInt(InstrumentedInt&& other) noexcept : value(other.value) {
         move_count++;
     }
-    
+
     // Copy assignment
     InstrumentedInt& operator=(const InstrumentedInt& other) {
         if (this != &other) {
@@ -53,7 +53,7 @@ public:
         }
         return *this;
     }
-    
+
     // Move assignment
     InstrumentedInt& operator=(InstrumentedInt&& other) noexcept {
         if (this != &other) {
@@ -62,51 +62,50 @@ public:
         }
         return *this;
     }
-    
+
     // Comparison operators
     bool operator<(const InstrumentedInt& other) const {
         comparison_count++;
         return value < other.value;
     }
-    
+
     bool operator==(const InstrumentedInt& other) const {
         comparison_count++;
         return value == other.value;
     }
-    
+
     bool operator!=(const InstrumentedInt& other) const {
         comparison_count++;
         return value != other.value;
     }
-    
+
     bool operator<=(const InstrumentedInt& other) const {
         comparison_count++;
         return value <= other.value;
     }
-    
+
     bool operator>(const InstrumentedInt& other) const {
         comparison_count++;
         return value > other.value;
     }
-    
+
     bool operator>=(const InstrumentedInt& other) const {
         comparison_count++;
         return value >= other.value;
     }
-    
+
     // Reset counters
     static void reset_counters() {
         copy_count = 0;
         move_count = 0;
         comparison_count = 0;
     }
-    
+
     // Print current counts
     static void print_stats(const std::string& operation) {
-        std::cout << operation << " - Copies: " << copy_count 
-                  << ", Moves: " << move_count 
-                  << ", Total Writes: " << total_writes()
-                  << ", Comparisons: " << comparison_count << std::endl;
+        std::cout << operation << " - Copies: " << copy_count << ", Moves: " << move_count
+                  << ", Total Writes: " << total_writes() << ", Comparisons: " << comparison_count
+                  << std::endl;
     }
 };
 
@@ -129,32 +128,32 @@ struct TestResult {
 // Check if ratio y/x is approximately constant (indicating true proportionality)
 double calculate_ratio_consistency(const std::vector<double>& x, const std::vector<double>& y) {
     if (x.size() != y.size() || x.size() < 2) return 0.0;
-    
+
     std::vector<double> ratios;
     for (size_t i = 0; i < x.size(); i++) {
         if (x[i] != 0) {
             ratios.push_back(y[i] / x[i]);
         }
     }
-    
+
     if (ratios.empty()) return 0.0;
-    
+
     // Calculate coefficient of variation (std dev / mean) for ratios
     double mean = 0;
     for (double ratio : ratios) {
         mean += ratio;
     }
     mean /= ratios.size();
-    
+
     double variance = 0;
     for (double ratio : ratios) {
         variance += (ratio - mean) * (ratio - mean);
     }
     variance /= ratios.size();
-    
+
     double std_dev = std::sqrt(variance);
     double cv = mean == 0 ? 1.0 : std_dev / std::abs(mean);
-    
+
     // Return 1 - CV (so perfect consistency = 1.0, poor consistency = 0.0)
     return std::max(0.0, 1.0 - cv);
 }

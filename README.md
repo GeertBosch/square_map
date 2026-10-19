@@ -174,8 +174,10 @@ in your application depends on many factors, including the following:
 
 # Performance Comparison
 The test system is a 2019 iMac with an Intel 8-core 3.6 GHz i9 processor and 64GB 2667 MHz DDR4 RAM.
-Your mileage will vary. 
-![Performance Comparison](plots/quickplot.svg) While this graph is dense, it clearly illustrates the
+Your mileage will vary.
+![Performance Comparison](plots/quickplot.svg)
+
+While this graph is dense, it clearly illustrates the
 most consequential performance properties of the square map. The vertical axis uses nanoseconds as
 units, rather than move or comparison operations. This reflects the practical importance of time and
 the acknowledgement that not all comparisons and moves are equal cost. The square map data structure
