@@ -64,7 +64,8 @@ def postprocess_svg(input_path, output_path=None):
             prev_content = svg[:match.start()]
             if '<text' in prev_content and '</text' not in prev_content:
                 return f'{attr}="{value}"'
-            return f'{attr}="{re.sub(r"-?\d+\.\d+", normalize_float, value)}"'
+            normalized = re.sub(r"-?\d+\.\d+", normalize_float, value)
+            return f'{attr}="{normalized}"'
 
         svg = re.sub(pattern, normalize_specific_attr, svg)
 
