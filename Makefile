@@ -23,7 +23,11 @@ venv:
 .PHONY: check-cmake
 check-cmake:
 	@command -v cmake >/dev/null 2>&1 || { \
-		echo "Error: Build dependencies are missing. Install them with: sudo apt install cmake build-essential libgtest-dev libboost-container-dev"; \
+		if [ "$$(uname -s)" = Darwin ]; then \
+			echo "Error: Build dependencies are missing. Install them with: brew install cmake googletest boost"; \
+		else \
+			echo "Error: Build dependencies are missing. Install them with: sudo apt install cmake build-essential libgtest-dev libboost-container-dev"; \
+		fi; \
 		exit 127; \
 	}
 
