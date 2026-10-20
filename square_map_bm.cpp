@@ -13,6 +13,7 @@
 #include <iostream>
 #include <map>
 #include <random>
+#include <vector>
 
 #ifndef DEBUG
 #define DEBUG 0
@@ -58,6 +59,33 @@ std::vector<KeyType> generateKeys(size_t N, KeyOrder order) {
     return keys;
 }
 
+// A map built by BM_Insert along with the keys used to build it, so that the
+// Lookup and RangeIteration benchmarks can reuse it instead of rebuilding.
+template <typename Map>
+struct BuiltMap {
+    std::vector<typename Map::key_type> keys;
+    Map map;
+};
+
+// Cache of built maps by size, one per Map/Order combination. The insert benchmarks run
+// first for all sizes, so entries stay around until the later benchmarks consume them.
+template <typename Map, KeyOrder Order>
+BuiltMap<Map>& builtMapCache(size_t N) {
+    static std::map<size_t, BuiltMap<Map>> cache;
+    return cache[N];
+}
+
+// Returns the cached map for size N, building it if BM_Insert did not run (e.g. filtered out)
+template <typename Map, KeyOrder Order>
+const BuiltMap<Map>& getBuiltMap(size_t N) {
+    auto& built = builtMapCache<Map, Order>(N);
+    if (!built.keys.empty()) return built;
+
+    built.keys = generateKeys<typename Map::key_type>(N, Order);
+    for (const auto& key : built.keys) built.map[key] = true;
+    return built;
+}
+
 // Insert benchmark
 template <typename Map, KeyOrder Order>
 static void BM_Insert(benchmark::State& state) {
@@ -65,15 +93,21 @@ static void BM_Insert(benchmark::State& state) {
 
     // Generate all keys upfront to avoid generator overhead in timing
     auto keys = generateKeys<typename Map::key_type>(N, Order);
+    Map m;
 
     for (auto _ : state) {
-        Map m;
+        m = Map();
 
         for (size_t i = 0; i < N; i++) {
             benchmark::DoNotOptimize(m[keys[i]] = true);
         }
         benchmark::ClobberMemory();
     }
+
+    // Keep the last map built for the Lookup and RangeIteration benchmarks
+    auto& built = builtMapCache<Map, Order>(N);
+    built.keys = std::move(keys);
+    built.map = std::move(m);
 
     state.SetItemsProcessed(state.iterations() * N);
     state.counters["time_per_item"] = benchmark::Counter(
@@ -84,12 +118,7 @@ template <typename Map, KeyOrder Order>
 static void BM_Lookup(benchmark::State& state) {
     const size_t N = state.range(0);
 
-    // Setup map with N elements
-    auto keys = generateKeys<typename Map::key_type>(N, Order);
-    Map m;
-    for (const auto& key : keys) {
-        m[key] = true;
-    }
+    const auto& [keys, m] = getBuiltMap<Map, Order>(N);
 
     size_t idx = 0;
     for (auto _ : state) {
@@ -107,12 +136,7 @@ template <typename Map, KeyOrder Order>
 static void BM_RangeIteration(benchmark::State& state) {
     const size_t N = state.range(0);
 
-    // Setup map with N elements
-    auto keys = generateKeys<typename Map::key_type>(N, Order);
-    Map m;
-    for (const auto& key : keys) {
-        m[key] = true;
-    }
+    const auto& m = getBuiltMap<Map, Order>(N).map;
 
     for (auto _ : state) {
         size_t sum = 0;
