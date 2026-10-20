@@ -257,65 +257,18 @@ public:
 
     constexpr iterator erase(const_iterator pos) {
         // Precondition: pos is dereferenceable and belongs to *this.
-        if (!_split) {
-            // Only one range, just erase it. TODO: Deal with large unsplit container efficiency
+        if (_split && _right_range_too_large()) {
+            auto key = pos->first;
+            merge();
+            pos = find(key);
+        }
+        if (!_split && size_type(_container.end() - pos.s0) <= kMinSplitSize) {
             auto past_it = _container.erase(pos.s0);  // Points past the erased element
             return iterator::make(past_it, past_it);
         }
-        // Invariant: the largest element in the map is in the right range. If we erase this
-        //            element, the last remaining elements in the left and right ranges may be
-        //            equal indicating that those erased elements now need to be removed.
-        //            After that removal we still may need a final swap to once more put the
-        //            largest remaining element on the right side.
-        if (std::next(pos.s0) == _container.end() &&
-            !key_compare()(_container[_split - 1].first, std::prev(pos.s0)->first)) {
-            // This is a tricky situation. For now just pop off the last element and merge.
-            _container.pop_back();
-            merge();
-            return end();
-        }
-
-        // Invariant: split > 0 && size() >= 3, as there is at least one element in the left range,
-        // one at the split point that is smaller, and one at the end that is larger.
-
-        // Item is in the right range or the last element of the left range, so just erase it.
-        if (_container.begin() + (_split - 1) <= pos.s0) {
-            //  [ 1 2 4 | 3 5 7 ] <- _split = 3
-            //        ^ pos.s0 = 2, erasing this merges both ranges: [ 1 2 3 | 5 7 ]
-            //                                                              ^ returned
-            //  [ 1 2 4 | 3 5 7 ] <- _split = 3
-            //            ^ pos.s0 = 3, erasing this merges both ranges: [ 1 2 4 | 5 7 ]
-            //                                                                      ^ returned
-
-            // Points past the erased element, all other iterators are invalidated.
-            // When erasing the last element, next_key is unused and std::next(pos) is end().
-            auto next_key =
-                std::next(pos.s0) == _container.end() ? pos.s0->first : std::next(pos)->first;
-            _split -= pos.s0 < _container.begin() + _split;
-            auto past_it = _container.erase(pos.s0);
-            // If we erased the last remaining item from the left range, meaning past_it points to
-            // begin(), if past_it == _container.end() == _container.begin() + _split, or if past_it
-            // points to an element whose key is strictly larger than the immediately preceding key,
-            // we have effectively merged both ranges and will reset the split point to zero.
-
-            bool merged = past_it == _container.begin() ||
-                          (past_it == _container.end() && _split == _container.size()) ||
-                          (past_it == _container.begin() + _split &&
-                           !Compare()(past_it->first, (std::prev(past_it))->first));
-            if (merged) merge();
-            if (past_it == _container.end()) return end();
-            return find(next_key);
-        }
-
-        // Item is strictly in the left range, so insert it into the right to mark it as erased.
-        Key key = pos.s0->first;
-        auto it = std::lower_bound(_container.begin() + _split, _container.end(), key,
-                                   value_key_compare());
-
-        ++_erased;
+        if (std::next(pos) == end()) return _erase(pos), end();
         auto next_key = std::next(pos)->first;
-        _container.emplace(it, value_type{key, T()});  // Invalidates all iterators.
-        return find(next_key);
+        return _erase(pos), find(next_key);  // Invalidates all iterators, so find the next again.
     }
 
     container_type extract() && { return std::move(_container); }
@@ -383,9 +336,8 @@ public:
 
         // If the insertion point is not too far from the end of the container, just insert.
         auto move_distance = std::distance(right_it, end);
-        auto right_size = std::distance(split, end);
         auto left_index = std::distance(begin, left_it);
-        if (move_distance < kMinSplitSize || right_size * right_size < 3 * _split) {
+        if (move_distance < kMinSplitSize || !_right_range_too_large()) {
             right_it = _container.insert(right_it, std::move(value));  // Invalidates all iterators.
             return {iterator::make(right_it, _container.begin() + left_index), true};
         }
@@ -431,6 +383,51 @@ public:
     }
 
 private:
+    // Erases pos from a split map, or from a flat map if pos is not among the last elements.
+    void _erase(const_iterator pos) {
+        // A flat map gets split before its last element, which keeps pos in the left range.
+        if (!_split) _split = _container.size() - 1;
+        auto split = _container.begin() + _split;
+
+        // Item is strictly in the left range, so insert it into the right to mark it as erased.
+        if (pos.s0 < std::prev(split)) {
+            auto it = std::lower_bound(split, _container.end(), pos->first, value_key_compare());
+            _container.insert(it, value_type{pos->first, T()});
+            ++_erased;
+            return;
+        }
+
+        // Item is in the right range or the last element of the left range, so just erase it.
+        _split -= pos.s0 < split;
+        _container.erase(pos.s0);
+        _restore_split();
+    }
+
+    // Restores split invariants after removing the last element of the left range, or any element
+    // of the right range: both ranges must overlap and the largest element must be on the right.
+    void _restore_split() {
+        for (; _split && _split < _container.size(); --_split) {
+            auto split = _container.begin() + _split;
+            auto& left_key = std::prev(split)->first;
+            if (Compare()(left_key, _container.back().first)) {
+                if (Compare()(split->first, left_key)) return;  // Valid split
+                if (Compare()(left_key, split->first)) break;   // Ranges no longer overlap
+                _container.erase(std::prev(split), std::next(split)), --_erased;  // Erased pair
+                continue;
+            }
+            // Move the largest element to the right range, and drop it if it was erased.
+            std::rotate(std::prev(split), split, _container.end());
+            auto last = std::prev(_container.end());
+            if (!Compare()(std::prev(last)->first, last->first))
+                _container.erase(std::prev(last), _container.end()), --_erased;
+        }
+        _split = 0;
+    }
+
+    bool _right_range_too_large() const noexcept {
+        auto right_size = _container.size() - _split;
+        return right_size * right_size >= 3 * _split;
+    }
     const square_map* _cthis() noexcept {
         return const_cast<const square_map*>(this);
     }

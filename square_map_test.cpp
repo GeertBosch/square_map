@@ -487,6 +487,54 @@ TEST(EraseMethod, EraseAroundMergeSize) {
         }
     }
 }
+TEST(EraseMethod, SmallMapsNeverSplit) {
+    using Map = geert::square_map<int, int>;
+    Map map;
+    std::mt19937 rng;
+    std::uniform_int_distribution<int> key_dist(0, Map::kMinSplitSize - 2);
+
+    for (int i = 0; i < 1000 * int(Map::kMinSplitSize); ++i) {
+        int key = key_dist(rng);
+        auto it = map.find(key);
+        if (rng() % 2 && it != map.end())
+            map.erase(it);
+        else
+            map[key] = i;
+        ASSERT_LT(map.size(), Map::kMinSplitSize);
+        ASSERT_EQ(map.split_point(), nullptr) << "Small map split after operation " << i;
+    }
+    check_valid(map);
+}
+
+TEST(EraseMethod, EraseRandomOrderFromUnsplitMap) {
+    using Map = geert::square_map<int, int>;
+    constexpr int kSize = 10 * Map::kMinSplitSize;
+    Map map;
+    std::map<int, int> ref;
+    for (int i = 0; i < kSize; ++i) map[i] = ref[i] = i * 10;
+    ASSERT_EQ(map.split_point(), nullptr);
+
+    std::vector<int> order(kSize);
+    std::iota(order.begin(), order.end(), 0);
+    std::shuffle(order.begin(), order.end(), std::mt19937());
+
+    for (int key : order) {
+        auto it = map.find(key);
+        ASSERT_NE(it, map.end());
+        auto next = map.erase(it);
+        auto ref_next = ref.erase(ref.find(key));
+        check_valid(map);
+        ASSERT_EQ(map.size(), ref.size());
+        ASSERT_EQ(map.find(key), map.end());
+        ASSERT_EQ(next == map.end(), ref_next == ref.end());
+        if (ref_next != ref.end()) EXPECT_EQ(next->first, ref_next->first);
+        ASSERT_TRUE(std::equal(
+            map.begin(), map.end(), ref.begin(), ref.end(),
+            [](auto& a, auto& b) { return a.first == b.first && a.second == b.second; }));
+    }
+    EXPECT_TRUE(map.empty());
+}
+
 TEST(EraseMethod, EraseLastElementOfSplitMap) {
     using Map = geert::square_map<int, int>;
     auto map = inject_with_split_index<Map>(

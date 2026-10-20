@@ -5,6 +5,7 @@
 #include <iomanip>
 #include <iostream>
 #include <map>
+#include <numeric>
 #include <random>
 #include <sstream>
 #include <string>
@@ -123,6 +124,8 @@ struct TestResult {
     double writes_per_insert;
     double comparisons_per_insert;
     double lookups_per_insert;
+    double writes_per_erase;
+    double writes_per_ends_erase;
 };
 
 // Check if ratio y/x is approximately constant (indicating true proportionality)
@@ -170,6 +173,10 @@ void analyze_complexity(const std::vector<TestResult>& results, std::string oper
             operation_values.push_back(result.comparisons_per_insert);
         } else if (operation == "Lookup Comps") {
             operation_values.push_back(result.lookups_per_insert);
+        } else if (operation == "Erase Writes") {
+            operation_values.push_back(result.writes_per_erase);
+        } else if (operation == "Erase Ends Writes") {
+            operation_values.push_back(result.writes_per_ends_erase);
         }
     }
 
@@ -292,6 +299,18 @@ void analyze_complexity(const std::vector<TestResult>& results, std::string oper
     }
 }
 
+// Returns writes per erase for erasing keys in the given order from a map built in ascending order,
+// which for square_map results in a single unsplit range.
+template <class Map>
+double erase_writes(int n, const std::vector<int>& erase_order) {
+    Map map;
+    for (int i = 0; i < n; ++i) map.insert({InstrumentedInt(i), InstrumentedInt(i * 2)});
+
+    InstrumentedInt::reset_counters();
+    for (int i : erase_order) map.erase(map.find(InstrumentedInt(i)));
+    return (double)InstrumentedInt::total_writes() / erase_order.size();
+}
+
 // Test function with multiple N values
 template <template <typename Key, typename T> class MapType>
 void test_map_complexity(std::string mapName, std::vector<std::string> expected_complexities) {
@@ -355,6 +374,19 @@ void test_map_complexity(std::string mapName, std::vector<std::string> expected_
 
             result.lookups_per_insert = (double)InstrumentedInt::comparison_count / N;
         }
+
+        // Test erasing half the elements in random order, and alternately from front and back.
+        {
+            using map_type = MapType<InstrumentedInt, InstrumentedInt>;
+            std::vector<int> erase_order(N);
+            std::iota(erase_order.begin(), erase_order.end(), 0);
+            std::shuffle(erase_order.begin(), erase_order.end(), std::mt19937());
+            erase_order.resize(N / 2);
+            result.writes_per_erase = erase_writes<map_type>(N, erase_order);
+
+            for (int i = 0; i < N / 2; ++i) erase_order[i] = i % 2 ? N - 1 - i / 2 : i / 2;
+            result.writes_per_ends_erase = erase_writes<map_type>(N, erase_order);
+        }
         std::cerr << "\r✔️\n";
 
         results.push_back(result);
@@ -362,28 +394,35 @@ void test_map_complexity(std::string mapName, std::vector<std::string> expected_
 
     // Analyze complexities
     std::cout << "\n### Complexity Analysis for " << mapName << "\n" << std::endl;
-    analyze_complexity(results, "Insert Writes", expected_complexities[0], true);
-    analyze_complexity(results, "Insert Comps", expected_complexities[1], kDebug);
-    analyze_complexity(results, "Lookup Comps", expected_complexities[2], kDebug);
+    // Maps may omit trailing expectations, e.g. std::map erase does no writes to classify.
+    const std::vector<std::string> operations = {"Insert Writes", "Insert Comps", "Lookup Comps",
+                                                 "Erase Writes", "Erase Ends Writes"};
+    for (size_t i = 0; i < expected_complexities.size(); ++i)
+        analyze_complexity(results, operations[i], expected_complexities[i], i == 0 || kDebug);
 
     // Print detailed results table
     std::cout << "\n### Detailed Results\n" << std::endl;
     std::cout << std::setw(12) << "N" << std::setw(15) << "Writes/Insert" << std::setw(20)
-              << "Comparisons/Insert" << std::setw(20) << "Comparisons/Lookup" << std::endl;
-    std::cout << "    " << std::string(63, '-') << std::endl;
+              << "Comparisons/Insert" << std::setw(20) << "Comparisons/Lookup" << std::setw(15)
+              << "Writes/Erase" << std::setw(18) << "Writes/EraseEnds" << std::endl;
+    std::cout << "    " << std::string(96, '-') << std::endl;
 
     for (const auto& result : results) {
         std::cout << std::setw(12) << result.n << std::setw(15) << std::fixed
                   << std::setprecision(2) << result.writes_per_insert << std::setw(20) << std::fixed
                   << std::setprecision(2) << result.comparisons_per_insert << std::setw(20)
-                  << std::fixed << std::setprecision(2) << result.lookups_per_insert << std::endl;
+                  << std::fixed << std::setprecision(2) << result.lookups_per_insert
+                  << std::setw(15) << std::fixed << std::setprecision(2) << result.writes_per_erase
+                  << std::setw(18) << result.writes_per_ends_erase << std::endl;
     }
 }
 
 int main() {
-    test_map_complexity<geert::square_map>("square_map", {"O(√n)", "O(log n)", "O(log n)"});
+    test_map_complexity<geert::square_map>("square_map",
+                                           {"O(√n)", "O(log n)", "O(log n)", "O(√n)", "O(√n)"});
     test_map_complexity<std::map>("std::map", {"O(log n)", "O(log n)", "O(log n)"});
-    test_map_complexity<boost::container::flat_map>("flat_map", {"O(n)", "O(log n)", "O(log n)"});
+    test_map_complexity<boost::container::flat_map>("flat_map",
+                                                    {"O(n)", "O(log n)", "O(log n)", "O(n)", "O(n)"});
 
     bool failure = totalFailures > 0 || totalPasses == 0;
     std::string mark = failure ? "❌" : "✅";
